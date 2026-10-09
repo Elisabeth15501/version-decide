@@ -1,5 +1,10 @@
 ---
 name: version-decide
+slug: version-decide
+version: 0.1.0
+displayName: 版本号判定器
+summary: 根据代码变更范围判定下一个 SemVer 语义化版本号，面向新手开发者，输出唯一且明确的版本建议。
+tags: [版本号, semver, 语义化版本, 发版决策, 版本管理]
 description: 根据代码变更范围判定下一个版本号（SemVer 语义化版本），输出唯一且明确的版本号建议。触发场景包括——用户问"这次改动该发什么版本""版本号怎么定""该升 major 还是 minor 还是 patch""这个改动算不算 breaking""0.x 阶段该升哪""要不要发预发布""alpha/beta/rc 怎么推进""回滚要不要升版本""废弃 API 算哪级""changelog 该怎么写版本"，或提到 semver、语义化版本、version bump、发版决策、版本递增时使用。内置确定性算术内核，同输入必得同输出。
 when_to_use: |
   典型触发：「下一版加了新角色和新功能，该发什么版本？」
@@ -76,7 +81,7 @@ grep -rnoE "v[0-9]+\.[0-9]+\.[0-9]+" --include=*.md . | head   # 版本注释/�
 | 内部重构、性能优化（行为等价）、修 bug、安全修复（不改 API） | **patch** |
 | 纯文档、测试、CI、格式 | **none**（不需发版） |
 
-同批变更**取最高级**：`feat + fix` → minor；`feat + break` → major。
+同批变更**按 major > minor > patch 的优先序判定**：`feat + fix` → minor；`feat + break` → major。
 标记废弃必须是 minor（SemVer §7 强制），即使尚未移除。
 完整表与灰区见 `references/decision-tables.md`。
 
@@ -123,7 +128,7 @@ python scripts/semver_check.py analyze <当前版本> --changes "变更1" "变�
 依据：
 - 新增角色杨廷和 → 新增内容，向后兼容，minor（SemVer §7）
 - 新增成就系统 → 同上
-- 取最高级别 → minor，patch 归零
+- 按 major > minor > patch 的优先序 → minor，patch 归零
 
 需要你确认：
 - 是否复用现有 localStorage 存档 key？（复用会导致老玩家进度错乱，可能构成 breaking）

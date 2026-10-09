@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from semver_check import Version, BadVersion, analyze, next_version, normalize_level, level_for_change
+from semver_check import Version, BadVersion, analyze, next_version, normalize_level, level_for_change, LEVEL_ORDER
 
 
 class TestParse(unittest.TestCase):
@@ -178,7 +178,7 @@ class TestHelpers(unittest.TestCase):
 
     def test_stable_not_in_max_comparison(self):
         """stable 是显式动作，不能被 max() 当成比 major 更高的级别自动选出。"""
-        self.assertNotIn("stable", __import__("semver_check").LEVEL_ORDER)
+        self.assertNotIn("stable", LEVEL_ORDER)
         r = analyze(Version.parse("0.3.1"), ["feat: 新功能"])
         self.assertEqual(r["level"], "minor")
 

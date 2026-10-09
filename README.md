@@ -39,7 +39,7 @@ python scripts/semver_check.py analyze 1.4.2 --changes "break: 配置改为 YAML
 | 内部重构、性能优化、修 bug、安全修复（不改 API） | **patch** |
 | 文档、测试、CI、格式 | **none**（不需发版） |
 
-同批变更取最高级别。`0.x` 阶段采用 npm/Cargo 语义：minor 递增即破坏边界。
+同批变更按 major > minor > patch 的优先序判定。`0.x` 阶段采用 npm/Cargo 语义：minor 递增即破坏边界。
 
 ## 开发
 
