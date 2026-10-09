@@ -1,7 +1,7 @@
 ---
 name: version-decide
 slug: version-decide
-version: 0.1.0
+version: 0.1.1
 displayName: 版本号判定器
 summary: 根据代码变更范围判定下一个 SemVer 语义化版本号，面向新手开发者，输出唯一且明确的版本建议。
 tags: [版本号, semver, 语义化版本, 发版决策, 版本管理]
