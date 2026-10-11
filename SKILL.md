@@ -18,6 +18,10 @@ when_to_use: |
 allowed-tools: Read, Grep, Glob, Bash(python*), AskUserQuestion
 disable-model-invocation: false
 user-invocable: true
+metadata:
+  openclaw:
+    requires:
+      bins: [python3]
 ---
 
 # Version Decider
