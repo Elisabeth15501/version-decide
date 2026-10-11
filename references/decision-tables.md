@@ -1,193 +1,167 @@
-# 判定表：变更类型 → 版本级别
+# Decision Table: Change Type → Version Level
 
-本文件是 `../SKILL.md` 判定流程的查表依据。每条规则都注明出处，
-出处缩写见文末。算术由 `../scripts/semver_check.py` 执行，本文件只定义"哪一类变更算哪一级"。
+This file is the lookup basis for the decision flow in `../SKILL.md`. Every rule cites its source; abbreviations are listed at the end. The arithmetic is executed by `../scripts/semver_check.py`; this file only defines **which kind of change maps to which level**.
 
 ---
 
-## 一、主判定表（稳定版本，major ≥ 1）
+## 1. Main decision table (stable versions, major ≥ 1)
 
-| 变更类型 | 级别 | 判定依据 | 说明 |
+| Change type | Level | Basis | Note |
 |---|---|---|---|
-| 移除/重命名公共导出 | **major** | S§8 | 旧代码 import 即失败 |
-| 公共函数签名变化（增删参数、改类型、改返回值） | **major** | S§8 | |
-| 公共接口行为改变（原成功调用现失败，或语义变化） | **major** | S§8 | 最容易被低估的一类 |
-| 公共配置项/环境变量/命令行参数重命名或删除 | **major** | S§8 | 配置也是 API |
-| 收紧校验、改变默认值、改变单位或精度 | **major** | S§8 | 除非能证明对所有现有用法等价 |
-| 删除整个功能模块 | **major** | S§8 | |
-| **标记废弃**（仍可用，仅告警） | **minor** | S§7 | 规范**明确要求** minor |
-| 新增公共 API（函数/类/类型/可选配置项） | **minor** | S§7 | |
-| 新增可选依赖、依赖版本约束放宽 | **minor** | G(minor 含依赖变更) | Go 官方把依赖变更归入 minor |
-| 内部重构（公共签名与行为均不变） | **patch** | S§6 | |
-| 性能优化（行为等价） | **patch** | S§6 | 有可测指标才可信 |
-| 修复错误行为 | **patch** | S§6 | |
-| 提升最低运行环境要求（Node/Python/Go 版本） | **major** ⚠️ | S§8 推论 | 见 §四 需确认项 |
-| 安全修复且不改变 API 形状 | **patch** | P(PyPA) | PyPA 明确认可此惯例 |
-| 纯文档 / 测试 / CI / 格式 | **none** | C§14 | 其他 type 无隐式影响；**通常不需发版** |
+| Remove/rename a public export | **major** | S§8 | Old code fails to import |
+| Public function signature change (add/remove param, change type, change return) | **major** | S§8 | |
+| Public interface behavior change (previously-successful call now fails, or semantics shift) | **major** | S§8 | Most underrated category |
+| Rename/remove a public config/env/CLI argument | **major** | S§8 | Config is also API |
+| Tighten validation, change a default, change a unit or precision | **major** | S§8 | Unless provably equivalent for all existing usage |
+| Delete an entire feature module | **major** | S§8 | |
+| **Mark deprecated** (still usable, warning only) | **minor** | S§7 | Spec **explicitly requires** minor |
+| Add public API (function/class/type/optional config) | **minor** | S§7 | |
+| Add optional dependency / relax a dependency constraint | **minor** | G (minor covers dep changes) | Go treats dep changes as minor |
+| Internal refactor (public signature and behavior unchanged) | **patch** | S§6 | |
+| Performance optimization (behavior preserved) | **patch** | S§6 | Credible only with measurable metrics |
+| Fix erroneous behavior | **patch** | S§6 | |
+| Raise the minimum runtime requirement (Node/Python/Go version) | **major** ⚠️ | S§8 corollary | See §4 confirmation items |
+| Security fix that does not change the API shape | **patch** | P (PyPA) | PyPA explicitly endorses this convention |
+| Pure docs / tests / CI / formatting | **none** | C§14 | Other types have no implicit effect; **usually no release** |
 
-`none` 是本技能刻意加的一级：新手最常犯的错是把 README 修改也算成一次 patch 发布。
+`none` is a level this skill deliberately adds: the most common beginner mistake is counting a README edit as a patch release.
 
 ---
 
-## 二、0.x 特殊规则（major == 0）
+## 2. 0.x special rules (major == 0)
 
-SemVer §4 说"任何东西都可能随时改变"，但**没有规定 0.x 该怎么递增**——
-这是规范的真空地带。npm 与 Cargo 用同一套办法填坑（学术研究 arXiv 2101.00836
-实测三者均未严格遵循 SemVer）。
+SemVer §4 says "anything may change at any time", but **does not specify how 0.x should increment** — this is a gap in the spec. npm and Cargo fill it the same way (academic study arXiv 2101.00836 found all three do not strictly follow SemVer in practice).
 
-**本技能采用 npm/Cargo 语义**：
+**This skill adopts npm/Cargo semantics**:
 
-| 变更 | 0.0.z | 0.y.z（y ≥ 1） |
+| Change | 0.0.z | 0.y.z (y ≥ 1) |
 |---|---|---|
-| patch 级（修复/重构/性能） | 0.0.(z+1) | 0.y.(z+1) |
-| minor 级（新功能/废弃） | **0.1.0** | **0.(y+1).0** |
-| major 级（破坏性） | **0.1.0** | **0.(y+1).0** |
+| patch-level (fix/refactor/perf) | 0.0.(z+1) | 0.y.(z+1) |
+| minor-level (feature/deprecate) | **0.1.0** | **0.(y+1).0** |
+| major-level (breaking) | **0.1.0** | **0.(y+1).0** |
 
-理由：`0.2.3` 的依赖约束是 `>=0.2.3, <0.3.0`，所以**递增 minor 就是破坏边界**。
-这样版本号才能真实告诉依赖方"升级会不会炸"。
+Rationale: the dependency constraint for `0.2.3` is `>=0.2.3, <0.3.0`, so **incrementing minor IS the breaking boundary**. This way the version number truthfully tells dependents "will upgrading break me?".
 
-**0.x → 1.0.0 是显式的毕业动作**（级别 `stable`），不由变更类型自动推导。
-因为它不是"修了个 bug"或"加了个功能"，而是**声明"从现在起 API 稳定"**。
-必须由人确认 API 已冻结、文档已写明支持策略后才能执行。
+**0.x → 1.0.0 is an explicit graduation action** (level `stable`), not auto-derived from a change type. It is not "fixed a bug" or "added a feature" — it is the declaration "from now on the API is stable". A human must confirm the API is frozen and the support policy is documented before it runs.
 
-Composer（PHP）把 `^0.2.3` 当 `[0.2.3, 1.0.0)`，比 npm 宽松。
-若项目发在 Composer 上，0.x 期间的 minor 递增**不会**破坏依赖方——
-此时可放宽为真正的 major 递增。需在确认环节问清目标生态。
+Composer (PHP) treats `^0.2.3` as `[0.2.3, 1.0.0)`, looser than npm. If a project ships on Composer, a minor bump during 0.x **does not** break dependents — then a true major bump may be relaxed. Ask the target ecosystem in the confirmation step.
 
 ---
 
-## 三、预发布通道
+## 3. Pre-release channels
 
-| 阶段 | 语义 | 谁在用 |
+| Stage | Semantics | Who uses it |
 |---|---|---|
-| `alpha` | API 可能随时推翻，早期尝鲜 | 开发者本人、CI |
-| `beta` | API 基本定型，功能冻结只修 bug | 愿意配合反馈的早期用户 |
-| `rc` | 候选发布，与正式版差异应仅剩文档/修 bug | 全部 CI 跑通、准备发版的团队 |
+| `alpha` | API may be overturned at any time; early taste | the developer, CI |
+| `beta` | API basically settled; feature freeze, bug-fix only | early users willing to give feedback |
+| `rc` | release candidate; diff vs stable should be docs/bug-fix only | the whole team with CI green, ready to ship |
 
-### 阶段推进规则
+### Stage-advance rules
 
-- 只能**逐级前进**：alpha → beta → rc → 正式。跳级会被脚本拒绝。
-- 同阶段重复发布：序号 +1（`2.0.0-alpha.1` → `2.0.0-alpha.2`）。
-- 阶段推进：序号归 1（`2.0.0-alpha.3` → `2.0.0-beta.1`）。
-- rc → 正式：去掉预发布标识符（`2.0.0-rc.2` → `2.0.0`）。
-- **预发布线内 core 保持不变**。SemVer §9 明确预发布不保证满足对应正式版的
-  兼容性要求，所以 alpha 阶段继续引入破坏性变更**不需要**再抬 major——
-  这正是预发布通道存在的意义。
-- 需要改投别的目标版本号时显式使用 `--rebase`。
+- Advance **one step at a time only**: alpha → beta → rc → stable. Skipping is rejected by the script.
+- Re-publish in the same stage: sequence +1 (`2.0.0-alpha.1` → `2.0.0-alpha.2`).
+- Advance a stage: sequence resets to 1 (`2.0.0-alpha.3` → `2.0.0-beta.1`).
+- rc → stable: drop the pre-release identifier (`2.0.0-rc.2` → `2.0.0`).
+- **core stays unchanged within a pre-release line**. SemVer §9 explicitly says a pre-release is not guaranteed to satisfy the compatibility of its associated normal version, so introducing further breaking changes during alpha **does not** require raising major again — that is exactly what a pre-release channel is for.
+- Use `--rebase` explicitly when you need to target a different version number.
 
-### npm / Cargo 的一个陷阱
+### A npm/Cargo trap
 
-两者都**默认不匹配预发布版本**：`foo = "1.0"` 不会匹配 `1.0.0-alpha`，
-必须显式写 `foo = "1.0.0-alpha"`。Cargo 还有一条：`1.0.0-alpha` 不会自动升到
-`1.0.1-alpha`。因此**预发布不能作为对下游的默认分发渠道**。
+Both **do not match pre-releases by default**: `foo = "1.0"` will not match `1.0.0-alpha`; you must write `foo = "1.0.0-alpha"` explicitly. Cargo adds: `1.0.0-alpha` will not auto-upgrade to `1.0.1-alpha`. So **a pre-release cannot be the default distribution channel to downstream**.
 
-### 构建号（`+` 后缀）
+### Build number (`+` suffix)
 
-不参与优先级比较（§10），只用于溯源：commit SHA、构建时间、内部流水号。
-`1.0.0+build.1` 与 `1.0.0+build.2` 优先级**相同**——所以它不能用来表达
-"更新的版本"，也不能用于自动升级判定。
+Does not affect precedence (§10); only for traceability: commit SHA, build time, internal run id. `1.0.0+build.1` and `1.0.0+build.2` have the **same** precedence — so it cannot express "a newer version" nor drive auto-upgrade decisions.
 
 ---
 
-## 四、必须向用户确认的关键信息
+## 4. Key information that MUST be confirmed with the user
 
-以下每一项都会改变结论，**不得替用户假设**：
+Each of the following changes the conclusion; **never assume it for the user**:
 
-### 1. 变更意图
+### 1. Intent of the change
 
-要解决的问题是什么，而不是改了什么。同一个 diff，
-"修 bug"和"顺手重构"可能对应不同的版本级别与不同的沟通口径。
+What problem is being solved, not what was edited. The same diff, "bug fix" vs "incidental refactor", may map to different levels and different messaging.
 
-### 2. 是否存在破坏性变更 —— 逐项对照
+### 2. Is there a breaking change — check item by item
 
-必须明确回答，不能默认"应该不破坏"：
+Must be answered explicitly; never default to "probably not breaking":
 
-- 是否有公共导出被移除或重命名？
-- 函数签名、参数顺序、返回值类型是否变化？
-- **原本能成功的调用，现在会不会失败或抛异常？**
-- 配置项、环境变量、命令行参数、默认值是否变化？
-- 依赖的最低版本要求是否提高？
-- 是否有类型/字段被收窄（如 Rust 的泛型约束、Python 的入参类型收窄）？
+- Any public export removed or renamed?
+- Function signature, param order, or return type changed?
+- **Does a previously-successful call now fail or throw?**
+- Config/env/CLI argument/default changed?
+- Minimum dependency version raised?
+- Any type/field narrowed (e.g. Rust generic constraint, Python input-type narrowing)?
 
-### 3. 目标生态与发布通道
+### 3. Target ecosystem and release channel
 
-- 发到哪个生态？（npm 的 `^0.x` 与 Composer 的 `^0.x` 语义不同）
-- 是否需要给下游**迁移期**？（→ 先发预发布，给足 deprecation 窗口）
-- 是正式版还是预发布？走哪个通道（alpha/beta/rc）？
-- 公开 API 是否已声明？（SemVer §1 要求**必须**声明公共 API，
-  否则无法判断什么算破坏性——这是最根本的前置条件）
+- Which ecosystem? (npm `^0.x` and Composer `^0.x` differ in semantics)
+- Does downstream need a **migration window**? (→ cut a pre-release first, give a full deprecation window)
+- Stable or pre-release? Which channel (alpha/beta/rc)?
+- Is the public API declared? (SemVer §1 **requires** declaring the public API, otherwise nothing can be judged breaking — this is the most fundamental precondition)
 
-### 4. 依赖与兼容性影响
+### 4. Dependency and compatibility impact
 
-- 有多少下游依赖？是否有付费/关键客户？
-- 依赖方能否平滑升级？是否需要迁移文档？
-- 是否与其他包存在双向依赖或工作区锁定？
-- Go 项目：升到 v2+ 会**改变模块路径**，需同步改所有 import，需确认是否接受。
+- How many downstream dependents? Any paid/critical customers?
+- Can dependents upgrade smoothly? Need migration docs?
+- Any cyclic dependency or workspace lock with other packages?
+- Go project: bumping to v2+ **changes the module path**; all imports must be updated in sync — confirm acceptance.
 
-### 5. ⚠️ 需额外确认的灰区
+### 5. ⚠️ Gray zones needing extra confirmation
 
-| 灰区 | 为什么难判 | 处理方式 |
+| Gray zone | Why hard | Handling |
 |---|---|---|
-| **安全修复** | 可能必须改 API 才能堵上漏洞 | 先问"能否保持 API 形状不变"；能则 patch，不能则 major 并在说明中标注安全原因 |
-| **提高最低运行环境** | 边界模糊 | 若旧环境用户仍能运行 → patch/minor；已无法运行 → major。问"最老的用户还剩谁" |
-| **性能优化** | "行为等价"需要证明 | 要求给出基准数据；无数据按 minor 保守处理 |
-| **重构** | 可能悄悄改了行为 | 要求确认"是否有测试覆盖公共 API 行为"；无覆盖按 minor |
-| **内部代码整理** | 依赖方不感知 | patch；若同时改了公共行为则重判 |
-| **0.x → 1.0.0** | 不是变更类型，是承诺 | 必须人工确认 API 冻结后才用 `stable` |
+| **Security fix** | May have to change the API to close the hole | First ask "can the API shape stay?"; if yes → patch, else → major and note the security reason |
+| **Raise min runtime** | Blurry boundary | If old-env users can still run → patch/minor; if they can't → major. Ask "who is your oldest user?" |
+| **Perf optimization** | "behavior preserved" needs proof | Require benchmark data; without data, treat conservatively as minor |
+| **Refactor** | May silently change behavior | Require "is public API behavior covered by tests?"; without coverage, treat as minor |
+| **Internal cleanup** | Not perceived by dependents | patch; if it also changed public behavior, re-grade |
+| **0.x → 1.0.0** | Not a change type, it is a promise | Must be human-confirmed API freeze before using `stable` |
 
 ---
 
-## 五、边界情况
+## 5. Edge cases
 
-### 回滚（revert）
+### Revert
 
-Conventional Commits **明确拒绝定义** revert 的版本语义。
-本技能采用规则：
+Conventional Commits **explicitly refuses to define** revert's version semantics. This skill adopts:
 
-- 回滚**非破坏性**变更 → **patch**。代码回到已知良好状态。
-- 回滚**破坏性**变更 → **major**。因为兼容性被**再次打破**，
-  依赖方刚从破坏中恢复又被打破。脚本类型：`revertbreak`。
-- 已发布版本的回滚：**不要移动已发布的版本号**（§3 禁止修改已发布版本）。
-  正确做法是发一个新版本号。
+- Revert a **non-breaking** change → **patch**. Code returns to a known-good state.
+- Revert a **breaking** change → **major**. Because compatibility is **broken a second time**; dependents just recovered and are broken again. Script type: `revertbreak`.
+- Reverting an already-published version: **do not move the published version number** (§3 forbids editing published versions). The correct move is to release a new version number.
 
-### 废弃（deprecate）
+### Deprecate
 
-SemVer §7 明确：任何公共 API 功能被标记废弃时**必须**递增 MINOR。
-即使没有其他变化、即使尚未移除。移除发生在之后的 major。
+SemVer §7 is explicit: whenever any public API feature is marked deprecated, MINOR **must** be incremented. Even with no other change, even before removal. Removal happens in a later major.
 
-最佳实践：废弃版本发 minor → 保留至少一个 minor 周期 →
-移除发 major。给下游明确的迁移窗口。
+Best practice: deprecate on a minor → keep at least one minor cycle → remove on a major. Gives downstream a clear migration window.
 
-### 并存多版本
+### Coexist multiple majors
 
-不同主版本共存时，版本号**必须**能区分，且导入路径也要区分：
+When different majors coexist, the version number **must** distinguish them, and the import path must too:
 
-- **Go**：v2+ 必须改模块路径为 `example.com/mod/v2`，
-  不同主版本天然可在同一构建中共存，解决菱形依赖。
-- **Python**：同一包名只能有一个版本在 PyPI 上，靠虚拟环境隔离；
-  需要并存就得用不同的包名或不同的安装环境。
-- **npm**：同一包名只能有一个 `latest`，用 dist-tag 区分
-  （`next` / `beta` 标签指向预发布版本）。
-- **Rust**：不同主版本是同一个包名下的不同版本，cargo 可同时解析多个版本。
+- **Go**: v2+ must change the module path to `example.com/mod/v2`; different majors naturally coexist in one build, solving the diamond-dependency conflict.
+- **Python**: only one version of a package name can be on PyPI; isolate via virtualenvs; to coexist you need different package names or different install environments.
+- **npm**: only one `latest` per package name; use dist-tag (`next` / `beta` pointing at pre-releases).
+- **Rust**: different majors are different versions under one package name; cargo resolves multiple versions simultaneously.
 
-### 其他
+### Misc
 
-- **已发布版本不可修改**（§3）。发现发错的版本号，只能发新版本，不能改标签。
-- **0.x 期间发过 breaking 但版本号是 patch**：这会让依赖方误判。修正方式是
-  发一个 minor（对齐真实语义），并在 changelog 中说明版本号语义的前置约定。
-- **同一批变更里最高级别胜出**：`feat + fix` → minor；
-  `feat + break` → major。这是 `analyze` 的核心逻辑。
+- **Published versions are immutable** (§3). If you shipped the wrong number, only release a new one — never move the tag.
+- **Shipped a breaking change during 0.x but bumped patch**: this misleads dependents. Fix by releasing a minor (aligning with real semantics) and noting the version-semantics convention in the changelog.
+- **Highest level in a batch wins**: `feat + fix` → minor; `feat + break` → major. This is the core logic of `analyze`.
 
 ---
 
-## 六、出处缩写
+## 6. Source abbreviations
 
-| 缩写 | 来源 |
+| Abbr | Source |
 |---|---|
 | **S** | Semantic Versioning 2.0.0 — https://semver.org/spec/v2.0.0.html |
 | **C** | Conventional Commits 1.0.0 — https://www.conventionalcommits.org/en/v1.0.0/ |
-| **P** | PyPA Versioning 讨论 / PEP 440 — https://packaging.python.org/en/latest/discussions/versioning/ |
-| **G** | Go Modules 版本编号 — https://go.dev/doc/modules/version-numbers |
-| **N** | Node.js 发布计划变更公告 — https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule |
-| **R** | Cargo 版本要求 — https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html |
-| **A** | arXiv 2101.00836（0.y.z 实证研究）— https://arxiv.org/pdf/2101.00836v1 |
+| **P** | PyPA Versioning discussion / PEP 440 — https://packaging.python.org/en/latest/discussions/versioning/ |
+| **G** | Go Modules version numbering — https://go.dev/doc/modules/version-numbers |
+| **N** | Node.js release-schedule change announcement — https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule |
+| **R** | Cargo version requirements — https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html |
+| **A** | arXiv 2101.00836 (0.y.z empirical study) — https://arxiv.org/pdf/2101.00836v1 |

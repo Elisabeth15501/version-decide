@@ -1,54 +1,50 @@
-# 版本号标准对比：SemVer、各生态策略、Conventional Commits、CalVer
+# Version-standard comparison: SemVer, ecosystem policies, Conventional Commits, CalVer
 
-本文件是 `version-decide` 技能判定逻辑的**依据来源**。所有规则均来自下列标准的
-官方条文（2026-10 核实），不做推测。判定流程见 `../SKILL.md`。
+This file is the **source of authority** for the `version-decide` skill's decision logic. Every rule comes from the official text of the standards below (verified 2026-10), no speculation. The decision flow is in `../SKILL.md`.
 
 ---
 
-## 一、SemVer 2.0.0（语义化版本）
+## 1. SemVer 2.0.0 (Semantic Versioning)
 
-来源：https://semver.org/spec/v2.0.0.html
+Source: https://semver.org/spec/v2.0.0.html
 
-### 核心规则（原文要点）
+### Core rules (key points)
 
-| 条款 | 规则 |
+| Clause | Rule |
 |---|---|
-| §2 | 版本号必须为 `X.Y.Z`，各段为非负整数，**不得含前导零** |
-| §3 | 已发布的版本，其内容**不得再修改**；任何修改都必须作为新版本发布 |
-| §4 | **0.y.z 为初始开发阶段。任何东西都可能随时改变，公共 API 不应被视为稳定** |
-| §5 | 1.0.0 定义公共 API；此后如何递增取决于该 API 如何变化 |
-| §6 | 仅引入向后兼容的 bug 修复时，递增 PATCH |
-| §7 | 引入新的向后兼容功能时递增 MINOR；**任何公共 API 功能被标记为废弃时也必须递增 MINOR**；patch 归零 |
-| §8 | 引入任何向后不兼容变更时递增 MAJOR；minor 与 patch 归零 |
-| §9 | 预发布：`-` + 点分标识符，仅 ASCII 字母数字与连字符，数字段无前导零；**预发布优先级低于对应正式版** |
-| §10 | 构建元数据：`+` 后内容**不参与优先级比较**，仅供溯源 |
-| §11 | 优先级比较规则（见下） |
+| §2 | Version must be `X.Y.Z`, each segment a non-negative integer, **no leading zeros** |
+| §3 | A published version's contents **must not be modified**; any change must ship as a new version |
+| §4 | **0.y.z is initial development. Anything may change at any time; the public API must not be considered stable** |
+| §5 | 1.0.0 defines the public API; how to increment afterwards depends on how that API changes |
+| §6 | Increment PATCH only for backward-compatible bug fixes |
+| §7 | Increment MINOR for new backward-compatible functionality; **any public API feature marked deprecated must also increment MINOR**; reset patch |
+| §8 | Increment MAJOR for any backward-incompatible change; reset minor and patch |
+| §9 | Pre-release: `-` + dot-separated identifiers, ASCII alphanumerics and hyphens only, no leading zeros in numeric identifiers; **pre-release has lower precedence than the associated normal version** |
+| §10 | Build metadata: content after `+` **does not affect precedence**; traceability only |
+| §11 | Precedence comparison rules (below) |
 
-注意 §6/§7/§8 的适用条件都带 `(x > 0)` 限定——**这正是 0.x 阶段规范留白的地方**，
-也是各生态自行填补分歧的根源。
+Note that the applicability conditions of §6/§7/§8 all carry the `(x > 0)` qualifier — **this is exactly where the spec leaves 0.x blank**, and the root of the divergent ecosystem interpretations.
 
-### §11 官方优先级示例（必须逐项成立）
+### §11 official precedence example (must hold item by item)
 
 ```
 1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta
           < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0
 ```
 
-比较规则：① 主/次/修订按数值比；② 相同 core 时预发布低于正式版；
-③ 预发布逐段左到右比，**纯数字段按数值、含字母段按 ASCII 序，且数字段优先级低于非数字段**
-（故 `1.0.0-1 < 1.0.0-alpha`）；④ 前缀全等时，段数多者优先级更高。
+Comparison rules: ① major/minor/patch compared numerically; ② same core → pre-release lower than normal; ③ pre-release compared left-to-right field by field, **numeric fields by value, alphanumeric fields by ASCII, and numeric fields have lower precedence than alphanumeric** (so `1.0.0-1 < 1.0.0-alpha`); ④ same prefix → more fields wins.
 
-### SemVer 官方 FAQ 对 0.x 的建议
+### SemVer FAQ advice on 0.x
 
-> 最简单的做法是从 0.1.0 开始初始开发版本，之后每次发布递增 minor。
+> The simplest thing to do is start your initial development releases at 0.1.0 and then increment the minor version for each subsequent release.
 
 ---
 
-## 二、Conventional Commits 1.0.0
+## 2. Conventional Commits 1.0.0
 
-来源：https://www.conventionalcommits.org/en/v1.0.0/
+Source: https://www.conventionalcommits.org/en/v1.0.0/
 
-### 结构
+### Structure
 
 ```
 <type>[optional scope]: <description>
@@ -58,115 +54,102 @@
 [optional footer(s)]
 ```
 
-### 与 SemVer 的映射
+### Mapping to SemVer
 
-| 提交 | 对应级别 |
+| Commit | Level |
 |---|---|
 | `fix:` | PATCH |
 | `feat:` | MINOR |
-| footer 含 `BREAKING CHANGE:`，或 type/scope 后加 `!` | MAJOR |
-| 其他类型（`build` `chore` `ci` `docs` `style` `refactor` `perf` `test`） | **无隐式影响** |
+| footer contains `BREAKING CHANGE:`, or `!` after type/scope | MAJOR |
+| other types (`build` `chore` `ci` `docs` `style` `refactor` `perf` `test`) | **no implicit effect** |
 
-关键条文：破坏性变更**可以是任何 type 的一部分**（§3）；除 `feat`/`fix` 外的类型
-"没有对 SemVer 的隐式影响"（§14）。
+Key text: a breaking change **may be part of any type** (§3); types other than `feat`/`fix` have "no implicit effect on SemVer" (§14).
 
-### 三个易被误用的 FAQ 答案
+### Three easily-misused FAQ answers
 
-1. **0.x 阶段怎么办？** 官方原文建议："**假装产品已经发布**"——因为可能已经有人在用你的软件。
-   这与 SemVer §4「可以随时改变」和 npm/cargo 的实际行为**直接冲突**（见第四节）。
-2. **revert 怎么办？** 官方明确**拒绝定义**："Conventional Commits does not make an
-   explicit effort to define revert behavior." 只建议用 `revert` type + `Refs:` footer。
-3. **类型用错怎么办？** 合并前用 `git rebase -i` 改；发布后只能各工具自行处理。
+1. **What about 0.x?** The official text suggests: "**pretend the product is already released**" — because someone may already be using your software. This **directly conflicts** with SemVer §4 ("may change at any time") and the actual npm/cargo behavior (see §4).
+2. **What about revert?** The spec **explicitly refuses to define** it: "Conventional Commits does not make an explicit effort to define revert behavior." It only suggests a `revert` type plus a `Refs:` footer.
+3. **Wrong type used?** `git rebase -i` before merge; after release each tool handles it itself.
 
 ---
 
-## 三、各语言 / 生态的官方版本策略
+## 3. Official versioning policies per language / ecosystem
 
-### Python — PEP 440（**不是 SemVer**）
+### Python — PEP 440 (**not SemVer**)
 
-来源：https://peps.python.org/pep-0440/（PEP 本身标注为历史文档，权威规范现维护于
-PyPA 的 Version specifiers）
+Source: https://peps.python.org/pep-0440/ (PEP itself marked historical; the authoritative spec is now maintained by PyPA's Version specifiers)
 
-规范形式：
+Canonical form:
 
 ```
 [N!]N(.N)*[{a|b|rc}N][.postN][.devN][+local]
 ```
 
-五段含义：
+Five segments:
 
-| 段 | 含义 |
+| Segment | Meaning |
 |---|---|
-| **Epoch** `N!` | 编号方式整体切换时使用（如从日期版 `2014.04` 切到语义版 `1!1.0`）。绝大多数项目不需要 |
-| **Release** `N(.N)*` | 正式版本号，`1` / `1.4` / `1.4.2` 皆可；比较时短段补零，故 `X.Y` 与 `X.Y.0` 等价 |
-| **Pre-release** `aN` / `bN` / `rcN` | **无连字符**：`1.0.0a1`、`1.0.0rc1` |
-| **Post-release** `.postN` | 正式版之后的修订（如打包脚本修正） |
-| **Dev-release** `.devN` | 预发布之前的开发快照 |
-| **Local** `+label` | 下游集成分支的私有标记，**不改变版本类型** |
+| **Epoch** `N!` | Switch the whole numbering scheme (e.g. from date `2014.04` to semantic `1!1.0`). Almost no project needs it |
+| **Release** `N(.N)*` | The normal version; `1` / `1.4` / `1.4.2` all valid; short segments zero-padded on compare, so `X.Y` == `X.Y.0` |
+| **Pre-release** `aN` / `bN` / `rcN` | **no hyphen**: `1.0.0a1`, `1.0.0rc1` |
+| **Post-release** `.postN` | A revision after the normal release (e.g. packaging-script fix) |
+| **Dev-release** `.devN` | A dev snapshot before pre-release |
+| **Local** `+label` | A private marker for a downstream integration branch; **does not change the version type** |
 
-与 SemVer 的最大差异：**预发布不用连字符**。`1.0.0-rc.1` 会被规范化成 `1.0.0rc1`，
-最终写进 PyPI 元数据、文件名和 lockfile 的是后者。手工写版本号时用 PEP 440 形式。
+Biggest difference from SemVer: **pre-releases have no hyphen**. `1.0.0-rc.1` is normalized to `1.0.0rc1`; what ends up in PyPI metadata, filenames, and lockfiles is the latter. Write version numbers in PEP 440 form by hand.
 
-PyPA 官方 versioning 讨论页明确指出实践中的例外：**安全漏洞修复常常不得不包含
-破坏性变更，却仍以 patch 版本发布**。本技能据此把 `security` 默认映射为 patch，
-但在 `SKILL.md` 中要求对该场景额外确认。
+PyPA's versioning discussion page notes a real-world exception: **security fixes often have to include breaking changes yet still ship as patch**. This skill therefore maps `security` to patch by default, but requires extra confirmation for that scenario in `SKILL.md`.
 
 ### Rust — Cargo
 
-来源：https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+Source: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 
-**兼容判定：最左非零段相同即为兼容**（与 SemVer「所有 pre-1.0.0 包互不兼容」不同）：
+**Compatibility rule: same leftmost non-zero segment = compatible** (unlike SemVer's "all pre-1.0.0 packages are mutually incompatible"):
 
-| 依赖声明 | 实际范围 |
+| Dependency declaration | Actual range |
 |---|---|
 | `1.2.3` | `>=1.2.3, <2.0.0` |
 | `0.2.3` | `>=0.2.3, <0.3.0` |
 | `0.0.3` | `>=0.0.3, <0.0.4` |
 
-预发布默认**不匹配**，必须显式指定；且 `1.0.0-alpha` 不会自动升到 `1.0.1-alpha`。
+Pre-releases are **not matched by default**; must be explicit; and `1.0.0-alpha` does not auto-upgrade to `1.0.1-alpha`.
 
-### Go — 语义化导入版本（Semantic Import Versioning）
+### Go — Semantic Import Versioning
 
-来源：https://go.dev/doc/modules/version-numbers
+Source: https://go.dev/doc/modules/version-numbers
 
-- **v2 起模块路径必须带主版本后缀**：`example.com/mod` → `example.com/mod/v2`。
-  这是为了实现导入兼容规则：导入路径相同则必须向后兼容。
-- v0 / v1 **不允许**后缀（`gopkg.in/` 例外，用 `.v2` 形式）。
-- 好处：**不同主版本可在同一构建中共存**，解决菱形依赖冲突。
-- 历史项目未加后缀却发过 v2 的，标记为 `v2.0.0+incompatible`。
-- v0 与 v1 的关系：v1 多数情况下仍与最后一个 v0 兼容，**v1 是"承诺兼容"而非"相对 v0 破坏"**。
+- **From v2 the module path must carry the major suffix**: `example.com/mod` → `example.com/mod/v2`. This implements the import-compatibility rule: same import path must be backward-compatible.
+- v0 / v1 **must not** carry a suffix (`gopkg.in/` is the exception, using `.v2` form).
+- Benefit: **different majors can coexist in one build**, resolving diamond-dependency conflicts.
+- Historical projects that shipped v2 without a suffix are tagged `v2.0.0+incompatible`.
+- v0 vs v1: in most cases v1 is still compatible with the last v0; **v1 is a "promise of compatibility", not "breaking relative to v0"**.
 
-### Node.js — 运行时自身的版本策略
+### Node.js — the runtime's own versioning policy
 
-来源：https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule
+Source: https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule
 
-2026 年 10 月起改为**每年一个主版本**（4 月 Current，10 月转 LTS），
-并新增 **Alpha 通道**（10 月至次年 3 月，6 个月），**Alpha 阶段允许 semver-major 变更**，
-采用标准 SemVer 预发布格式（如 `27.0.0-alpha.1`）。此前是每年两个主版本、奇偶分 Current/LTS。
+From October 2026 Node ships **one major per year** (April Current, October → LTS), and adds an **Alpha channel** (October to next March, 6 months) where **semver-major changes are allowed** during Alpha, using the standard SemVer pre-release form (e.g. `27.0.0-alpha.1`). Previously it was two majors per year, odd/even split into Current/LTS.
 
-### CalVer（日历版本）
+### CalVer (Calendar Versioning)
 
-来源：https://calver.org/
+Source: https://calver.org/
 
-`YY.MM.PATCH`（Ubuntu 24.10、pip 26.0.1、Black 26.3.1）、`YYYY.MM.DD`（yt-dlp 2026.08.19）、
-`YY.MINOR`（Apple 自 2025 年起全线改为年份编号：iOS 26 / macOS 26 / Xcode 26）。
+`YY.MM.PATCH` (Ubuntu 24.10, pip 26.0.1, Black 26.3.1), `YYYY.MM.DD` (yt-dlp 2026.08.19), `YY.MINOR` (Apple, from 2025,全线 switched to year numbering: iOS 26 / macOS 26 / Xcode 26).
 
-Neo4j 是最近的迁移案例：**2025 年 1 月起从 SemVer 切换到 CalVer**（`YYYY.MM.PATCH`），
-并在 2025.06 把 Cypher 语言版本从服务端解耦、独立演进。
+Neo4j is a recent migration case: **from January 2025 it switched from SemVer to CalVer** (`YYYY.MM.PATCH`), and in 2025.06 decoupled the Cypher language version from the server to evolve independently.
 
-适用信号：发布节奏与日历强相关、支持周期需要一眼可辨、版本号要表达"新鲜度"而非兼容性。
+Applicability signal: release cadence strongly tied to the calendar, support windows that must be obvious at a glance, version number expressing "freshness" rather than compatibility.
 
 ---
 
-## 四、标准间的冲突点（判定逻辑必须处理的地方）
+## 4. Conflicts between standards (what the decision logic must handle)
 
-| 冲突 | SemVer 2.0.0 | 实际生态行为 |
+| Conflict | SemVer 2.0.0 | Actual ecosystem behavior |
 |---|---|---|
-| **0.x 是否可随意破坏** | §4：可以随时改变，API 不稳定 | npm `^0.2.3` = `[0.2.3, 0.3.0)`、Cargo 同；**minor 递增就是破坏边界**。Composer（PHP）却把 `^0.2.3` 当 `[0.2.3, 1.0.0)`，更宽松 |
-| **0.x 阶段的提交规范** | §4：不保证 | Conventional Commits 官方却建议"假装已发布" |
-| **0.x 有无递增规则** | 无明确规定 | 学术研究（arXiv 2101.00836）实测 Cargo/npm/Packagist 均未严格遵循，且 0.y.z 发布频率并不比 ≥1.0.0 更高；大量项目长期不跨 1.0.0 |
-| **废弃算哪级** | §7：必须 MINOR | 无争议 |
-| **安全修复含破坏** | 未规定 | 实践中常以 patch 发版 |
+| **Can 0.x break freely?** | §4: change anytime, API unstable | npm `^0.2.3` = `[0.2.3, 0.3.0)`, Cargo same; **minor bump IS the breaking boundary**. Composer (PHP) treats `^0.2.3` as `[0.2.3, 1.0.0)`, looser |
+| **Commit convention in 0.x** | §4: no guarantee | Conventional Commits officially suggests "pretend already released" |
+| **Is there an increment rule for 0.x?** | No explicit rule | Academic study (arXiv 2101.00836) found Cargo/npm/Packagist don't strictly follow; 0.y.z release frequency is not higher than ≥1.0.0; many projects never cross 1.0.0 |
+| **Which level is deprecation?** | §7: must be MINOR | No dispute |
+| **Security fix with breaking change** | Unspecified | In practice often shipped as patch |
 
-**本技能的取舍**：0.x 阶段采用 **npm/Cargo 语义**（minor 即破坏边界），
-因为它是包管理器的实际行为，能真实保护依赖方；并在输出中显式提示这一点。
+**This skill's trade-off**: during 0.x adopt **npm/Cargo semantics** (minor = breaking boundary), because it is the package managers' actual behavior and truthfully protects dependents; and state this explicitly in the output.

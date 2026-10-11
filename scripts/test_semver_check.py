@@ -6,7 +6,8 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from semver_check import Version, BadVersion, analyze, next_version, normalize_level, level_for_change, LEVEL_ORDER
+from semver_check import (Version, BadVersion, analyze, next_version, normalize_level,
+                     level_for_change, set_lang, LEVEL_ORDER)
 
 
 class TestParse(unittest.TestCase):
@@ -199,6 +200,54 @@ class TestHelpers(unittest.TestCase):
         args = ("1.4.7", ["feat: 新增导出", "fix: 边界条件"])
         outs = {analyze(Version.parse(args[0]), args[1])["next"] for _ in range(50)}
         self.assertEqual(len(outs), 1)
+
+
+class TestI18n(unittest.TestCase):
+    """跨语言：reasons/错误文案随 --lang 变，但版本号与级别不变。"""
+
+    def test_keys_match_between_locales(self):
+        import json as _json
+        import os as _os
+        base = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "locales")
+        with open(_os.path.join(base, "en.json"), encoding="utf-8") as f:
+            en = _json.load(f)
+        with open(_os.path.join(base, "zh.json"), encoding="utf-8") as f:
+            zh = _json.load(f)
+        self.assertEqual(set(en), set(zh))
+
+    def test_reasons_localized_but_version_stable(self):
+        set_lang("zh")
+        r_zh = analyze(Version.parse("1.2.3"), ["feat: 新功能", "fix: 修 bug"])
+        set_lang("en")
+        r_en = analyze(Version.parse("1.2.3"), ["feat: new feature", "fix: fix bug"])
+        # 版本号与级别与语言无关
+        self.assertEqual(r_zh["next"], r_en["next"])
+        self.assertEqual(r_zh["level"], r_en["level"])
+        # 文案随语言变化
+        self.assertNotEqual(r_zh["reasons"], r_en["reasons"])
+        self.assertTrue(any("向后兼容" in s for s in r_zh["reasons"]))
+        set_lang("en")  # 还原，避免影响其他用例
+
+    def test_error_message_localized(self):
+        set_lang("zh")
+        try:
+            level_for_change("wibble: x")
+        except ValueError as e_zh:
+            zh_msg = str(e_zh)
+        set_lang("en")
+        try:
+            level_for_change("wibble: x")
+        except ValueError as e_en:
+            en_msg = str(e_en)
+        self.assertNotEqual(zh_msg, en_msg)
+        set_lang("en")
+
+    def test_default_is_english(self):
+        set_lang("en")
+        r = analyze(Version.parse("1.2.3"), ["feat: x"])
+        blob = " ".join(r["reasons"]).lower() + " " + " ".join(
+            c["why"] for c in r["changes"]).lower()
+        self.assertIn("backward-compatible", blob)
 
 
 if __name__ == "__main__":

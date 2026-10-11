@@ -18,16 +18,70 @@
     major   向后不兼容的破坏性变更
     stable  0.x 毕业为 1.0.0（显式动作，不来自变更类型）
 
+语言：用户面向文案（reasons / 错误提示 / 级别说明）随 --lang 切换；
+默认 auto（探测 LC_ALL/LC_MESSAGES/LANG，回退 en），满足 ClawHub English-default。
+JSON 输出键名始终为英文（current/next/level/...），值随语言。
 完整规则与依据见 ../SKILL.md 与 ../references/decision-tables.md
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import os
 import re
 import sys
 from typing import List, Optional, Sequence, Tuple
+
+# --------------------------------------------------------------------------
+# 国际化（零依赖；默认英文，auto 回退 en）
+# --------------------------------------------------------------------------
+
+_LOCALE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "locales")
+_STR: dict = {}
+
+
+def load_locale(lang: str) -> dict:
+    """读取 locales/<lang>.json。文件缺失时回退 en。"""
+    path = os.path.join(_LOCALE_DIR, lang + ".json")
+    try:
+        with io.open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        with io.open(os.path.join(_LOCALE_DIR, "en.json"), encoding="utf-8") as f:
+            return json.load(f)
+
+
+def set_lang(lang: str) -> None:
+    global _STR
+    _STR = load_locale(lang)
+
+
+def _(key: str, *args, **kwargs) -> str:
+    """按当前语言取文案；key 缺失时原样返回 key，便于排查。"""
+    s = _STR.get(key, key)
+    if args or kwargs:
+        try:
+            return s.format(*args, **kwargs)
+        except (IndexError, KeyError, ValueError):
+            return s
+    return s
+
+
+def detect_lang() -> str:
+    """auto 模式：探测环境变量，命中 zh 返回 zh，否则 en（满足 English default）。"""
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        v = os.environ.get(var, "")
+        if v:
+            code = v.split(".")[0].lower()
+            if code.startswith("zh"):
+                return "zh"
+    return "en"
+
+
+set_lang("en")  # 模块导入即默认英文，保证测试/无 CLI 场景可用
+
 
 # --------------------------------------------------------------------------
 # 解析
@@ -113,7 +167,7 @@ class Version:
                 1 if not self.pre else 0, self._normalized_pre())
 
     def _normalized_pre(self) -> Tuple:
-        # 纯数字段按数值比；非数字段按 ASCII 串比；数字段优先级低于非数字段；
+        # 纯数字场按数值比；非数字场按 ASCII 串比；数字场优先级低于非数字场；
         # 前缀全等时，段数多的优先级更高（补 None 占位）
         out: List[Tuple[int, object]] = []
         for ident in self.pre:
@@ -155,7 +209,7 @@ def normalize_level(token: str) -> str:
         return t
     if t in _LEVEL_ALIAS:
         return _LEVEL_ALIAS[t]
-    raise ValueError("无法识别的变更类型：%r（可用：%s）" % (token, ", ".join(sorted(_VALID_LEVELS))))
+    raise ValueError(_("ERR_UNKNOWN_CHANGE_TYPE", token, ", ".join(sorted(_VALID_LEVELS))))
 
 
 # --------------------------------------------------------------------------
@@ -169,56 +223,50 @@ def next_version(current: Version, level: str, pre: Optional[str] = None,
     rebase=True 时强制从当前 core 重新递增（用于预发布线内决定换目标版本号的场景）。
     """
     if level not in _VALID_LEVELS:
-        raise ValueError("level 必须是 %s 之一" % ", ".join(sorted(_VALID_LEVELS)))
+        raise ValueError(_("ERR_INVALID_LEVEL", ", ".join(sorted(_VALID_LEVELS))))
     reasons: List[str] = []
     m, n, p = current.major, current.minor, current.patch
     in_prerelease = bool(current.pre)
 
     if level == "none":
-        reasons.append("全部变更均不触及公共 API，不需要发新版本（保留 %s）。" % current.core())
+        reasons.append(_("REASON_NONE_NO_BUMP", current.core()))
         return Version(m, n, p, current.pre, current.build), reasons
 
     if level == "stable":
         if m != 0:
-            reasons.append("当前已在 %d.x 稳定线，'stable' 动作不适用。" % m)
+            reasons.append(_("REASON_STABLE_NOT_APPLICABLE", m))
             return Version(m, n, p, current.pre, current.build), reasons
-        reasons.append("显式毕业动作：0.x 不提供任何兼容性保证，"
-                       "锁定 API 并声明 1.0.0 契约，跳过 1.0.0 之前的预发布阶段。")
+        reasons.append(_("REASON_STABLE_GRADUATION"))
         base = Version(1, 0, 0)
     elif in_prerelease and not rebase:
         # 预发布线已在飞：core 保持不变，新变更累积进同一条预发布线。
         # SemVer 与 npm/Cargo 都允许预发布之间出现破坏性变更，这正是预发布通道的意义。
         base = Version(m, n, p)
-        reasons.append("当前处于预发布线 %s，core 保持不变；"
-                       "预发布通道允许继续引入破坏性变更（SemVer §9："
-                       "预发布版本不保证满足其对应正式版本的兼容性要求）。"
-                       "若需改投别的目标版本号，加 --rebase。" % current.core())
+        reasons.append(_("REASON_PRERELEASE_LINE", current.core()))
     elif m == 0:
         # ---- 0.x 特殊区：npm/cargo 把 minor 视为破坏性边界 -------------
         if level == "patch":
             base = Version(0, n, p + 1)
-            reasons.append("0.%d.%d：patch 不改变最左非零位，依赖方可安全自动升级。" % (n, p))
+            reasons.append(_("REASON_0X_PATCH", n, p))
         else:  # minor / major
             base = Version(0, n + 1, 0)
-            reasons.append("0.%d.%d：0.x 阶段 minor 递增即破坏性边界"
-                           "（npm ^ 与 cargo ^ 都以 0.(y+1).0 为上界），"
-                           "故 %s 落在 0.%d.0。" % (n, p, level, n + 1))
+            reasons.append(_("REASON_0X_MINOR", n, p, level, n + 1))
     else:
         if level == "patch":
             base = Version(m, n, p + 1)
-            reasons.append("不兼容 API 变更仅限内部修复，patch 递增（SemVer §6）。")
+            reasons.append(_("REASON_PATCH"))
         elif level == "minor":
             base = Version(m, n + 1, 0)
-            reasons.append("向后兼容的新增功能/废弃标记，minor 递增并将 patch 归零（SemVer §7）。")
+            reasons.append(_("REASON_MINOR"))
         else:
             base = Version(m + 1, 0, 0)
-            reasons.append("公共 API 出现向后不兼容变更，major 递增并将 minor/patch 归零（SemVer §8）。")
+            reasons.append(_("REASON_MAJOR"))
 
     # ---- 预发布标识符处理 ----------------------------------------------
     if pre:
         pre_norm = pre.strip().lstrip("-")
         if not re.match(r"^(alpha|beta|rc)(\.\d+)?$", pre_norm):
-            raise ValueError("预发布标识符必须是 alpha / beta / rc 或其带序号形式，收到 %r" % pre)
+            raise ValueError(_("ERR_BAD_PRE", pre))
         # 裸阶段名统一补 .1，保证版本号形状稳定可排序
         pre_tuple: Tuple[object, ...] = _pre_from_stage(pre_norm)
 
@@ -226,17 +274,16 @@ def next_version(current: Version, level: str, pre: Optional[str] = None,
         if current.pre and same_core:
             pre_tuple = _advance_pre(current.pre, pre_norm, reasons)
         else:
-            reasons.append("在 %s 上开启预发布通道，序号从 1 起。" % base.core())
+            reasons.append(_("REASON_PRE_OPEN", base.core()))
         new = Version(base.major, base.minor, base.patch, pre_tuple,
                       build if build is not None else current.build)
     else:
         if current.pre and base.core() == current.core() and level in ("patch", "minor"):
-            reasons.append("从预发布转为正式版：去掉预发布标识符（SemVer §11.3 "
-                           "预发布优先级低于同 core 正式版）。")
+            reasons.append(_("REASON_PRE_TO_STABLE"))
         new = Version(base.major, base.minor, base.patch, (), build if build is not None else "")
 
     if new.build:
-        reasons.append("构建元数据 %s 不参与优先级比较（SemVer §10），仅供溯源。" % new.build)
+        reasons.append(_("REASON_BUILD", new.build))
     return new, reasons
 
 
@@ -255,7 +302,7 @@ def _advance_pre(current_pre: Tuple[object, ...], requested: str,
     cur_num = current_pre[1] if len(current_pre) > 1 and isinstance(current_pre[1], int) else 0
 
     if cur_stage == want_stage:
-        reasons.append("同一预发布阶段 %s，序号 %d → %d。" % (cur_stage, cur_num, cur_num + 1))
+        reasons.append(_("REASON_PRE_ADVANCE_SAME", cur_stage, cur_num, cur_num + 1))
         return (want_stage, cur_num + 1)
 
     try:
@@ -268,15 +315,14 @@ def _advance_pre(current_pre: Tuple[object, ...], requested: str,
         want_idx = -1
 
     if want_idx == cur_idx + 1:
-        reasons.append("预发布阶段推进：%s → %s，序号归 1。" % (cur_stage, want_stage))
+        reasons.append(_("REASON_PRE_ADVANCE_STAGE", cur_stage, want_stage))
         return (want_stage, 1)
     if want_idx == cur_idx:
         return (want_stage, cur_num + 1)
     if want_idx > cur_idx:
         raise ValueError(
-            "不允许跳过预发布阶段：当前为 %s，不能直接进入 %s。"
-            "请先发 %s。（alpha → beta → rc → 正式）" % (cur_stage, want_stage, PRE_STAGES[cur_idx + 1]))
-    reasons.append("预发布回退：%s → %s（重新开启该阶段的验证窗口）。" % (cur_stage, want_stage))
+            _("ERR_SKIP_PRE", cur_stage, want_stage, PRE_STAGES[cur_idx + 1]))
+    reasons.append(_("REASON_PRE_REVERT", cur_stage, want_stage))
     return (want_stage, 1)
 
 
@@ -284,25 +330,25 @@ def _advance_pre(current_pre: Tuple[object, ...], requested: str,
 # 变更描述 → 级别
 # --------------------------------------------------------------------------
 
-# 变更类型 → 基准级别。破坏性以 "break:" 前缀显式声明，压过类型默认值。
+# 变更类型 → (基准级别, 文案 key)。破坏性以 "break:" 前缀显式声明，压过类型默认值。
 _CHANGE_RULES = {
-    "feat": ("minor", "新增向后兼容功能"),
-    "feature": ("minor", "新增向后兼容功能"),
-    "fix": ("patch", "修复错误行为"),
-    "bugfix": ("patch", "修复错误行为"),
-    "perf": ("patch", "性能优化，行为等价"),
-    "revert": ("patch", "回滚非破坏性变更"),
-    "security": ("patch", "安全修复且不改变 API 形状"),
-    "docs": ("none", "仅文档，不影响任何使用者"),
-    "test": ("none", "仅测试，不影响使用者"),
-    "ci": ("none", "仅流水线配置"),
-    "chore": ("none", "杂项维护（依赖、格式、注释）"),
-    "style": ("none", "纯格式"),
-    "build": ("none", "构建系统调整"),
-    "refactor": ("patch", "内部重构，公共 API 签名与行为不变"),
-    "deprecate": ("minor", "标记废弃但仍可用（SemVer §7 明确要求 minor）"),
-    "revertbreak": ("major", "回滚了一次破坏性变更，兼容性再次被打破"),
-    "breaking": ("major", "破坏性变更"),
+    "feat": ("minor", "DESC_FEAT"),
+    "feature": ("minor", "DESC_FEAT"),
+    "fix": ("patch", "DESC_FIX"),
+    "bugfix": ("patch", "DESC_FIX"),
+    "perf": ("patch", "DESC_PERF"),
+    "revert": ("patch", "DESC_REVERT"),
+    "security": ("patch", "DESC_SECURITY"),
+    "docs": ("none", "DESC_DOCS"),
+    "test": ("none", "DESC_TEST"),
+    "ci": ("none", "DESC_CI"),
+    "chore": ("none", "DESC_CHORE"),
+    "style": ("none", "DESC_STYLE"),
+    "build": ("none", "DESC_BUILD"),
+    "refactor": ("patch", "DESC_REFACTOR"),
+    "deprecate": ("minor", "DESC_DEPRECATE"),
+    "revertbreak": ("major", "DESC_REVERTBREAK"),
+    "breaking": ("major", "DESC_BREAKING"),
 }
 
 
@@ -313,7 +359,7 @@ def level_for_change(spec: str) -> Tuple[str, str, bool]:
     """
     raw = spec.strip()
     if not raw:
-        raise ValueError("变更描述为空")
+        raise ValueError(_("ERR_EMPTY_CHANGE"))
 
     forced_break = False
     # 1) 先剥离显式破坏性标记
@@ -332,27 +378,27 @@ def level_for_change(spec: str) -> Tuple[str, str, bool]:
     note = note.strip()
     if key not in _CHANGE_RULES:
         if not forced_break:
-            raise ValueError("未知变更类型 %r（可用：%s）" % (kind.strip(), ", ".join(sorted(_CHANGE_RULES))))
+            raise ValueError(_("ERR_UNKNOWN_CHANGE_TYPE", kind.strip(), ", ".join(sorted(_CHANGE_RULES))))
         key, note = "breaking", (kind.strip() + (("：" + note) if sep and note else ""))
 
     level, desc = _CHANGE_RULES[key]
     if forced_break:
-        return "major", (note or desc) + "（显式声明为破坏性）", True
-    return level, note or desc, False
+        return "major", (note or _(desc)) + _("MSG_FORCED_BREAK"), True
+    return level, note or _(desc), False
 
 
 def analyze(current: Version, specs: Sequence[str], pre: Optional[str] = None,
             build: Optional[str] = None, rebase: bool = False) -> dict:
     """核心入口：变更集合 → 唯一版本号建议。"""
     if not specs:
-        raise ValueError("至少需要一条变更描述")
+        raise ValueError(_("ERR_NO_CHANGES"))
     items = [level_for_change(s) for s in specs]
     level = max((lv for lv, _, _ in items), key=lambda x: LEVEL_ORDER[x])
     has_break = any(br for _, _, br in items)
     driver = [d for lv, d, _ in items if lv == level]
 
     if has_break and current.major == 0 and level != "major":
-        reasons_extra = "存在破坏性变更且当前为 0.x，按 0.x 规则处理。"
+        reasons_extra = _("REASON_0X_BREAKING_NOTE")
     else:
         reasons_extra = ""
 
@@ -382,9 +428,9 @@ def ecosystem_notes(text: str) -> List[str]:
     notes: List[str] = []
     for rx, label in _PEP440_HINTS:
         if rx.search(text.strip()):
-            notes.append("检测到 %s —— 这不是 SemVer 写法，Python 生态请用 PEP 440 规范形式。" % label)
+            notes.append(_("MSG_PEP440_HINT", label))
     if text.strip().startswith("v"):
-        notes.append("Git tag 常带 v 前缀（v1.2.3）；包管理器元数据里不要带 v。")
+        notes.append(_("MSG_GIT_V_PREFIX"))
     return notes
 
 
@@ -399,47 +445,51 @@ def _print(obj: dict) -> None:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="semver_check",
-        description="版本号判定算术内核：校验 / 递增 / 从变更推导 / 比较")
+        description=_("MSG_CLI_DESC"))
+    # 公共参数：语言（默认 auto，回退 en）
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--lang", default="auto", choices=["auto", "en", "zh"],
+                        help="输出语言：auto（探测环境，回退 en）| en | zh")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p_check = sub.add_parser("check", help="校验并规范化版本号")
+    p_check = sub.add_parser("check", parents=[common], help=_("HELP_CHECK"))
     p_check.add_argument("version")
 
-    p_next = sub.add_parser("next", help="按级别计算下一个版本号")
+    p_next = sub.add_parser("next", parents=[common], help=_("HELP_NEXT"))
     p_next.add_argument("version")
-    p_next.add_argument("--level", required=True, help="none|patch|minor|major|stable")
-    p_next.add_argument("--pre", help="alpha | beta | rc | alpha.1 ...")
-    p_next.add_argument("--build", help="构建元数据，如 20261008.a1b2c3d")
+    p_next.add_argument("--level", required=True, help=_("HELP_LEVEL"))
+    p_next.add_argument("--pre", help=_("HELP_PRE"))
+    p_next.add_argument("--build", help=_("HELP_BUILD"))
     p_next.add_argument("--rebase", action="store_true",
-                        help="预发布线内强制从当前 core 重新递增目标版本号")
+                        help=_("HELP_REBASE"))
 
-    p_an = sub.add_parser("analyze", help="从变更描述推导版本号")
+    p_an = sub.add_parser("analyze", parents=[common], help=_("HELP_ANALYZE"))
     p_an.add_argument("version")
-    p_an.add_argument("--changes", nargs="+", required=True, metavar="SPEC")
+    p_an.add_argument("--changes", nargs="+", required=True, metavar="SPEC", help=_("HELP_CHANGES"))
     p_an.add_argument("--pre")
     p_an.add_argument("--build")
-    p_an.add_argument("--rebase", action="store_true",
-                      help="预发布线内强制从当前 core 重新递增目标版本号")
+    p_an.add_argument("--rebase", action="store_true", help=_("HELP_REBASE"))
 
-    p_exp = sub.add_parser("explain", help="只输出判定理由链")
+    p_exp = sub.add_parser("explain", parents=[common], help=_("HELP_EXPLAIN"))
     p_exp.add_argument("version")
-    p_exp.add_argument("--changes", nargs="+", required=True, metavar="SPEC")
+    p_exp.add_argument("--changes", nargs="+", required=True, metavar="SPEC", help=_("HELP_CHANGES"))
     p_exp.add_argument("--pre")
     p_exp.add_argument("--build")
-    p_exp.add_argument("--rebase", action="store_true",
-                       help="预发布线内强制从当前 core 重新递增目标版本号")
+    p_exp.add_argument("--rebase", action="store_true", help=_("HELP_REBASE"))
 
-    p_cmp = sub.add_parser("compare", help="比较优先级")
+    p_cmp = sub.add_parser("compare", parents=[common], help=_("HELP_COMPARE"))
     p_cmp.add_argument("a")
     p_cmp.add_argument("b")
 
     args = ap.parse_args(argv)
+    # 语言解析（在真正产出任何文案前完成）
+    set_lang(detect_lang() if args.lang == "auto" else args.lang)
     try:
         if args.cmd == "compare":
             a, b = Version.parse(args.a), Version.parse(args.b)
             _print({"a": str(a), "b": str(b),
                     "result": "a < b" if a < b else ("a > b" if b < a else "a == b"),
-                    "note": "构建元数据不参与比较（SemVer §10）。"})
+                    "note": _("MSG_COMPARE_BUILD")})
             return 0
 
         cur = Version.parse(args.version)
@@ -468,8 +518,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     except BadVersion as exc:
         _print({"valid": False, "input": str(exc),
-                "error": "不符合 SemVer 2.0.0 语法。正确形式：MAJOR.MINOR.PATCH"
-                         "[-pre][+build]，各数字段不得有前导零。",
+                "error": _("ERR_BAD_VERSION_SYNTAX"),
                 "ecosystem_notes": ecosystem_notes(str(exc))})
         return 2
     except ValueError as exc:
