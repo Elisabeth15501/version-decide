@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""semver_check.py 的回归测试。用法：python test_semver_check.py"""
+"""Regression tests for semver_check.py (the version-decide decision engine).
+
+DEV / MAINTENANCE-ONLY: this suite is a development artifact, not part of the runtime
+decision flow. Run after editing the engine: python test_semver_check.py
+
+Note on language: a few expected strings and comments below are Chinese because they
+exercise the `zh` locale shipped in locales/zh.json (a fully supported, user-selectable
+language). The runtime skill is English-default; the zh copy is an optional localization.
+
+（中文：本文件是 semver_check.py 的回归测试，仅用于开发期校验，不属于运行期判定流程。）
+"""
 
 import os
 import sys

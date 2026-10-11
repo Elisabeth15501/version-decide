@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""量测 SKILL.md 的合规指标：description 长度、token 估算、分区 token 预算。
+"""measure_skill.py -- DEV / MAINTENANCE-ONLY tool (not part of the runtime decision flow).
 
-用途：重构前后对比，确保 description 不超 1536 字符上限、正文留足压缩余量。
-用法：python measure_skill.py <SKILL.md 路径>
+Measures SKILL.md compliance metrics: description length, token estimate, per-section
+token budget. Use it before/after editing SKILL.md to confirm the description stays under
+the 1536-char cap and the body keeps enough compression headroom.
+
+This script is a documentation-maintenance helper. It is NEVER invoked to answer a
+release-decision question; the decision engine is semver_check.py.
+
+Usage: python measure_skill.py <path-to-SKILL.md>
+
+（中文：本脚本是开发/维护工具，仅用于量测 SKILL.md 的合规指标，不属于运行期判定流程。）
 """
 import io
 import re

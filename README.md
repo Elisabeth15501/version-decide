@@ -1,5 +1,7 @@
 # version-decide
 
+> 说明：本 README 是**中文（zh）本地化副本**。技能的默认文档为英文 `SKILL.md`，运行时输出跟随用户语言（en/zh）。English primary docs: `SKILL.md`.
+
 根据代码变更范围判定下一个版本号。面向开发者，尤其是新手开发者。
 
 输出**唯一且明确**的版本号建议，并给出可追溯的依据。
@@ -55,7 +57,8 @@ python -m unittest test_semver_check -v   # 33 项回归测试
 
 ## 依据
 
-所有规则来自标准官方条文，2026-10 核实：
+判定依据主要来自下列标准官方条文；其中 0.x npm/Cargo 语义、`security`→patch 等
+为本技能自定义的局部默认（非标准，详见 `references/standards-comparison.md`），2026-10 核实：
 [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) ·
 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) ·
 [PEP 440](https://peps.python.org/pep-0440/) ·

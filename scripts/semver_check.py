@@ -1,27 +1,36 @@
 #!/usr/bin/env python3
-"""semver_check.py -- 版本号判定的确定性算术内核（Python 3.8+，零依赖）。
+"""semver_check.py -- the SemVer release-decision arithmetic core (Python 3.8+, zero deps).
 
-设计目标：把"版本号怎么算"从人脑/模型的手工推演，变成一次可复算的函数调用。
-同一个输入必须永远得到同一个输出，这是本技能"唯一且明确"承诺的技术保证。
+This is the DECISION ENGINE of the `version-decide` skill. It turns "what version
+number should this be" into a single reproducible function call: the same input must
+always produce the same output. That reproducibility is the technical guarantee behind
+the skill's "one unambiguous recommendation" promise.
 
-子命令：
-    check <version>                    校验并规范化版本号，同时报告生态兼容性
-    next <version> --level <lvl>       按指定级别计算下一个版本号
-    analyze <version> --changes <spec> 从变更描述集合推导版本号（核心入口）
-    compare <a> <b>                    比较两个版本号的优先级
-    explain <version> --changes <spec> 只输出判定理由链，不打印最终号
+Subcommands:
+    check <version>                    validate & normalize a version, report ecosystem hints
+    next <version> --level <lvl>       compute the next version at a given level
+    analyze <version> --changes <spec> derive a version from a set of change specs (main entry)
+    compare <a> <b>                    compare two versions by precedence
+    explain <version> --changes <spec> print only the reasoning chain, not the final number
 
-级别（level）：
-    none    不需要发版
-    patch   向后兼容的修复
-    minor   向后兼容的新功能 / 标记废弃
-    major   向后不兼容的破坏性变更
-    stable  0.x 毕业为 1.0.0（显式动作，不来自变更类型）
+Levels:
+    none    no release needed
+    patch   backward-compatible fix
+    minor   backward-compatible new feature / deprecation
+    major   backward-incompatible (breaking) change
+    stable  0.x graduates to 1.0.0 (explicit action, never derived from change type)
 
-语言：用户面向文案（reasons / 错误提示 / 级别说明）随 --lang 切换；
-默认 auto（探测 LC_ALL/LC_MESSAGES/LANG，回退 en），满足 ClawHub English-default。
-JSON 输出键名始终为英文（current/next/level/...），值随语言。
-完整规则与依据见 ../SKILL.md 与 ../references/decision-tables.md
+Language: user-facing copy (reasons / errors / level descriptions) follows --lang;
+default `auto` detects LC_ALL/LC_MESSAGES/LANG and falls back to `en` (ClawHub English-default).
+JSON output keys are always English (current/next/level/...); values follow --lang.
+Full rules and citations: ../SKILL.md and ../references/decision-tables.md.
+
+（中文：本文件是 version-decide 技能的「判定内核」，所有版本号均由确定性算术得出，
+不依赖模型手算。）
+
+NOTE ON ENVIRONMENT ACCESS: the only environment variables this script ever reads are
+LC_ALL / LC_MESSAGES / LANG, and only inside detect_lang() to pick the output language.
+It does NOT read secrets, network config, or any other environment data.
 """
 
 from __future__ import annotations
@@ -70,7 +79,9 @@ def _(key: str, *args, **kwargs) -> str:
 
 
 def detect_lang() -> str:
-    """auto 模式：探测环境变量，命中 zh 返回 zh，否则 en（满足 English default）。"""
+    """auto mode: read ONLY the LC_ALL / LC_MESSAGES / LANG locale variables to pick a
+    language. Returns "zh" if a zh* locale is set, else "en" (ClawHub English-default).
+    No other environment data is read."""
     for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         v = os.environ.get(var, "")
         if v:

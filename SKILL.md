@@ -1,11 +1,11 @@
 ---
 name: version-decide
 slug: version-decide
-version: 0.2.0
+version: 1.0.0
 displayName: Version Decider
 summary: Decides the next SemVer version number from code changes, for beginner developers. Outputs a single, unambiguous version recommendation.
 tags: [versioning, semver, semantic-versioning, release-decision, version-management, 版本号, 语义化版本]
-description: 'Decide the next version number (SemVer) from the scope of code changes, and output a single, unambiguous recommendation. Triggers when the user asks "what version should this release be", "how do I bump the version", "major or minor or patch", "is this a breaking change", "what to bump in 0.x", "should I cut a pre-release", "how to advance alpha/beta/rc", "does a revert need a version bump", "which level is deprecating an API", "what version goes in the changelog", or mentions semver, semantic versioning, version bump, release decision, version increment. Ships a deterministic arithmetic core: same input always yields the same output.'
+description: 'Decide the NEXT SemVer version number from the SCOPE OF CODE CHANGES for an upcoming release, and output a single, unambiguous recommendation with cited standard clauses. Use only when the user is deciding which version to assign to a release they are about to cut (e.g. "what version should this release be", "major or minor or patch", "what to bump in 0.x", "how to advance alpha/beta/rc", "is this breaking"). NOT for: looking up an already-published version, asking the install command, CalVer/date-based versioning, or general release/project-management questions. Ships a deterministic arithmetic core: same input always yields the same output.'
 when_to_use: |
   Typical triggers: "Next release adds a new character and a new feature — what version should it be?"
   "1.2.3 — which version fits next?"
@@ -15,6 +15,7 @@ when_to_use: |
   - Only asking "when was v1.5.0 released" — that is a lookup, not a release decision
   - Asking the install command "how do I install v2" — that is package management, not version decision
   - Asking what the current version of some project is — just read it, this skill is not needed
+  - Generic "should I release now" / project-management or roadmap questions — that is release planning, not version numbering
 allowed-tools: Read, Grep, Glob, Bash(python*), AskUserQuestion
 disable-model-invocation: false
 user-invocable: true
@@ -48,6 +49,15 @@ Give developers (especially beginners) a **single, unambiguous** version-number 
 - All **user-facing output follows the user's language**: if the user writes in Chinese, reply in Chinese.
 - The CLI core `scripts/semver_check.py` localizes its `reasons` / error messages / level descriptions via `--lang en|zh|auto`. `auto` detects `LC_ALL`/`LC_MESSAGES`/`LANG` and falls back to `en`. JSON keys (`current`/`next`/`level`/...) stay English; values follow `--lang`.
 - JSON **reports/logs** remain English only (per the policy's "JSON logs & reports English only" rule).
+
+---
+
+## Capabilities & safety boundaries
+
+- **Decision engine:** `scripts/semver_check.py` (zero-dependency Python) computes every version via deterministic arithmetic. The model must never compute a version by hand; if the script errors, show the raw error and ask, do not fabricate a number.
+- **Dev-only helpers:** `scripts/measure_skill.py` (SKILL.md compliance metrics) and `scripts/test_semver_check.py` (37 regression tests) are **maintenance tools**, not part of the runtime decision flow. They are never invoked to answer a release-decision question.
+- **Locale only:** the engine reads **only** the `LC_ALL` / `LC_MESSAGES` / `LANG` environment variables, and only to choose output language. It does **not** read secrets, network configuration, or any other environment data.
+- **No side effects:** read-only inspection of local version files. No package installation, no repository mutation, no file deletion, no network calls.
 
 ---
 

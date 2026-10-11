@@ -1,6 +1,10 @@
 # Version-standard comparison: SemVer, ecosystem policies, Conventional Commits, CalVer
 
-This file is the **source of authority** for the `version-decide` skill's decision logic. Every rule comes from the official text of the standards below (verified 2026-10), no speculation. The decision flow is in `../SKILL.md`.
+This file collects the **official source text** behind the `version-decide` skill's decision logic. The quoted rules in each section are taken verbatim from the standards below (verified 2026-10).
+
+> ⚠️ **Scope of authority.** Only the indented quotes and the rule tables are *the standard*. Where this skill departs from the literal standard — notably the **0.x npm/Cargo semantics** (minor = breaking boundary) and the **`security` → patch default** — it is explicitly labeled as **opinionated implementation policy (a local default)**. These defaults are release-strategy guidance, **not** part of any standard, and must not be treated as normative authority. Confirm ecosystem-specific assumptions before publishing.
+
+The decision flow lives in `../SKILL.md`.
 
 ---
 
@@ -98,7 +102,9 @@ Five segments:
 
 Biggest difference from SemVer: **pre-releases have no hyphen**. `1.0.0-rc.1` is normalized to `1.0.0rc1`; what ends up in PyPI metadata, filenames, and lockfiles is the latter. Write version numbers in PEP 440 form by hand.
 
-PyPA's versioning discussion page notes a real-world exception: **security fixes often have to include breaking changes yet still ship as patch**. This skill therefore maps `security` to patch by default, but requires extra confirmation for that scenario in `SKILL.md`.
+PyPA's versioning discussion page notes a real-world exception: **security fixes often have to include breaking changes yet still ship as patch**.
+
+> ⚠️ **Opinionated default (not in the standard).** This skill maps `security` to `patch` by default, but only because real-world security releases frequently bundle breaking changes while still shipping as a patch. This is a *policy choice*, not a rule from PEP 440 or SemVer. `SKILL.md` requires extra confirmation for that scenario.
 
 ### Rust — Cargo
 
@@ -134,7 +140,7 @@ From October 2026 Node ships **one major per year** (April Current, October → 
 
 Source: https://calver.org/
 
-`YY.MM.PATCH` (Ubuntu 24.10, pip 26.0.1, Black 26.3.1), `YYYY.MM.DD` (yt-dlp 2026.08.19), `YY.MINOR` (Apple, from 2025,全线 switched to year numbering: iOS 26 / macOS 26 / Xcode 26).
+`YY.MM.PATCH` (Ubuntu 24.10, pip 26.0.1, Black 26.3.1), `YYYY.MM.DD` (yt-dlp 2026.08.19), `YY.MINOR` (Apple, from 2025, switched its entire OS lineup to year numbering: iOS 26 / macOS 26 / Xcode 26).
 
 Neo4j is a recent migration case: **from January 2025 it switched from SemVer to CalVer** (`YYYY.MM.PATCH`), and in 2025.06 decoupled the Cypher language version from the server to evolve independently.
 
@@ -152,4 +158,4 @@ Applicability signal: release cadence strongly tied to the calendar, support win
 | **Which level is deprecation?** | §7: must be MINOR | No dispute |
 | **Security fix with breaking change** | Unspecified | In practice often shipped as patch |
 
-**This skill's trade-off**: during 0.x adopt **npm/Cargo semantics** (minor = breaking boundary), because it is the package managers' actual behavior and truthfully protects dependents; and state this explicitly in the output.
+> ⚠️ **Opinionated default (not in the standard).** During 0.x this skill adopts **npm/Cargo semantics** (minor = breaking boundary). This is a *policy choice*: it matches the package managers' actual resolution behavior and truthfully protects dependents, but SemVer §4 itself leaves 0.x unspecified. The skill states this explicitly in its output so it is never mistaken for a standard requirement.

@@ -161,3 +161,10 @@ i18n 加载器保持零第三方依赖（沿用项目既有「stdlib-only」约�
 4. `_meta.json`：**仅当某平台（SkillHub/ClawHub）明确要求时补**。经 `skill-publish-gate` 预检，两平台均不以 `_meta.json` 为必填（以 SKILL.md frontmatter 为准），故 v0.2.0 **不补**；若未来某平台 CLI/门禁报缺，再据其 schema 补英文 `description`。✅ 已确认（条件式）
 
 > 以上四项已于实现前全部确认，P1–P7 已落地于 v0.2.0。
+
+## 10. 稳定版发布（2026-10-11，安全审计后加固）
+
+ClawHub 安全审计（v0.2.0，Oct 11 2026）整体结论为 **PASS**（aig / clawscan / static-analysis / virustotal 均 clean；仅 SkillSpector 给出机械式 CRITICAL，属误报）。基于其审计发现做针对性加固后，本技能由 0.x 毕业为稳定版：
+
+- 版本：**v0.2.0 → v1.0.0**（稳定版，API 冻结确认）。
+- 加固项：① `standards-comparison.md`/`.zh.md` 将「标准原文」与「本技能自定义默认（0.x npm/Cargo 语义、`security`→patch）」显式分离（修复 SDI-4）；② `SKILL.md` 触发器收窄并加负向排除（SQP-1）；③ 修复 `standards-comparison.md` 中英混杂行、为 README/zh 文档加「可选本地化副本」声明（SQP-3）；④ `SKILL.md` 新增能力/权限边界小节，明确仅读 `LC_ALL/LC_MESSAGES/LANG` 三个语言变量、无副作用（LP1）；⑤ 明确 `semver_check.py` 为判定内核、`measure_skill.py`/`test_semver_check.py` 为开发期工具（缓解 TP4）。
