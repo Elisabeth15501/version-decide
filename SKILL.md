@@ -23,6 +23,9 @@ metadata:
   openclaw:
     requires:
       bins: [python3]
+      # Read-only locale variables consumed by scripts/semver_check.py for output-language
+      # selection only (falls back to "en"). No secrets, no network config, no writes.
+      envVars: [LC_ALL, LC_MESSAGES, LANG]
 ---
 
 # Version Decider
