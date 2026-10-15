@@ -55,5 +55,12 @@
   "DESC_REFACTOR": "Internal refactor; public API signature and behavior unchanged",
   "DESC_DEPRECATE": "Marks deprecation but stays usable (SemVer \u00a77 requires minor)",
   "DESC_REVERTBREAK": "Reverts a breaking change; compatibility is broken a second time",
-  "DESC_BREAKING": "Breaking change"
+  "DESC_BREAKING": "Breaking change",
+
+  "ERR_FIX_EMPTY": "input is empty; a version must look like 1.2.3",
+  "ERR_FIX_LEADING_ZERO": "numeric segment {0} has a leading zero; write it without the zero (e.g. {0} -> {1})",
+  "ERR_FIX_SEGMENT_COUNT": "expected 3 numeric segments MAJOR.MINOR.PATCH; got {0}",
+  "ERR_FIX_BAD_PRE": "pre-release part {0} is malformed (use ASCII alphanumerics/hyphens, no leading zeros)",
+  "ERR_FIX_BAD_BUILD": "build part {0} is malformed (use ASCII alphanumerics/hyphens)",
+  "ERR_FIX_TRAILING": "unexpected character near {0}; check for trailing '-' or '+'"
 }

@@ -25,6 +25,11 @@ default `auto` detects LC_ALL/LC_MESSAGES/LANG and falls back to `en` (ClawHub E
 JSON output keys are always English (current/next/level/...); values follow --lang.
 Full rules and citations: ../SKILL.md and ../references/decision-tables.md.
 
+Output-channel contract (Q3): every user-facing result goes to stdout as pure JSON;
+diagnostics (locale-fallback notes, missing-key warnings, lang=auto notices) go to
+stderr only, so stdout stays machine-parseable even when a locale file is missing
+or corrupted.
+
 （中文：本文件是 version-decide 技能的「判定内核」，所有版本号均由确定性算术得出，
 不依赖模型手算。）
 
@@ -49,31 +54,133 @@ from typing import List, Optional, Sequence, Tuple
 
 _LOCALE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "locales")
 _STR: dict = {}
+# 记录当前实际生效语言，供 CLI 层提示（显式化语言检测结果，见 Q2）
+_ACTIVE_LANG: str = "en"
+# 缺键告警去重：同一 key 只提示一次，避免刷屏
+_WARNED_KEYS: set = set()
+
+# 内嵌英文默认串表（S1 兜底）：当 locales/en.json 与 zh.json 都不可用时仍保证可用。
+# 与 locales/en.json 同源；改动 en.json 文案时请同步本表（测试断言键集合一致）。
+_EN_FALLBACK: dict = {
+    "MSG_CLI_DESC": "Version-decision arithmetic core: validate / bump / derive from changes / compare",
+    "HELP_CHECK": "Validate and normalize a version number",
+    "HELP_NEXT": "Compute the next version by level",
+    "HELP_ANALYZE": "Derive the version from change descriptions",
+    "HELP_EXPLAIN": "Print only the reasoning chain",
+    "HELP_COMPARE": "Compare precedence",
+    "HELP_LEVEL": "none|patch|minor|major|stable",
+    "HELP_PRE": "alpha | beta | rc | alpha.1 ...",
+    "HELP_CHANGES": "change specs, e.g. feat: add export",
+    "HELP_BUILD": "Build metadata, e.g. 20261008.a1b2c3d",
+    "HELP_REBASE": "Force re-bumping the target version number from the current core within a pre-release line",
+    "ERR_INVALID_LEVEL": "level must be one of {0}",
+    "ERR_UNKNOWN_CHANGE_TYPE": "Unrecognized change type: {0!r} (allowed: {1})",
+    "ERR_BAD_PRE": "Pre-release identifier must be alpha / beta / rc or a numbered form; got {0!r}",
+    "ERR_EMPTY_CHANGE": "Change description is empty",
+    "ERR_NO_CHANGES": "At least one change description is required",
+    "ERR_BAD_VERSION_SYNTAX": "Does not match SemVer 2.0.0 syntax. Correct form: MAJOR.MINOR.PATCH[-pre][+build]; no leading zeros in numeric segments.",
+    "ERR_SKIP_PRE": "Skipping a pre-release stage is not allowed: currently {0}, cannot jump straight to {1}. Release {2} first. (alpha -> beta -> rc -> stable)",
+    "REASON_NONE_NO_BUMP": "No change touches the public API; no new release needed (keep {0}).",
+    "REASON_STABLE_NOT_APPLICABLE": "Already on the {0}.x stable line; the 'stable' action does not apply.",
+    "REASON_STABLE_GRADUATION": "Explicit graduation: 0.x gives no compatibility guarantee; lock the API and declare the 1.0.0 contract, skipping the pre-release stage before 1.0.0.",
+    "REASON_PRERELEASE_LINE": "Currently on the {0} pre-release line; core stays the same. Use --rebase to target a different version number.",
+    "REASON_0X_PATCH": "0.{0}.{1}: patch does not change the leftmost non-zero digit, so dependents can auto-upgrade safely.",
+    "REASON_0X_MINOR": "0.{0}.{1}: under 0.x, a minor bump IS the breaking boundary (npm ^ and cargo ^ both cap at 0.(y+1).0), so {2} lands at 0.{3}.0.",
+    "REASON_PATCH": "Only internal fixes with no incompatible API change; patch bump (SemVer §6).",
+    "REASON_MINOR": "Backward-compatible new feature or deprecation marker; minor bump and patch reset to zero (SemVer §7).",
+    "REASON_MAJOR": "Backward-incompatible change in the public API; major bump and minor/patch reset to zero (SemVer §8).",
+    "REASON_PRE_OPEN": "Opening the pre-release channel on {0}; sequence starts at 1.",
+    "REASON_PRE_TO_STABLE": "Converting pre-release to stable: drop the pre-release identifier (SemVer §11.3).",
+    "REASON_BUILD": "Build metadata {0} does not affect precedence (SemVer §10); it is for traceability only.",
+    "REASON_PRE_ADVANCE_SAME": "Same pre-release stage {0}; sequence {1} -> {2}.",
+    "REASON_PRE_ADVANCE_STAGE": "Pre-release stage advanced: {0} -> {1}; sequence reset to 1.",
+    "REASON_PRE_REVERT": "Pre-release reverted: {0} -> {1} (re-opening the validation window for that stage).",
+    "REASON_0X_BREAKING_NOTE": "A breaking change exists and the current version is 0.x; handled under the 0.x rule.",
+    "MSG_PEP440_HINT": "Detected {0} - this is not SemVer syntax; in the Python ecosystem use PEP 440 form.",
+    "MSG_GIT_V_PREFIX": "Git tags often carry a v prefix (v1.2.3); don't include the v in package-manager metadata.",
+    "MSG_COMPARE_BUILD": "Build metadata does not affect comparison (SemVer §10).",
+    "MSG_FORCED_BREAK": " (explicitly declared breaking)",
+    "DESC_FEAT": "Adds a backward-compatible feature",
+    "DESC_FIX": "Fixes erroneous behavior",
+    "DESC_PERF": "Performance optimization, behavior preserved",
+    "DESC_REVERT": "Reverts a non-breaking change",
+    "DESC_SECURITY": "Security fix without changing the API shape",
+    "DESC_DOCS": "Docs only; affects no consumer",
+    "DESC_TEST": "Tests only; affects no consumer",
+    "DESC_CI": "Pipeline config only",
+    "DESC_CHORE": "Misc maintenance (deps, formatting, comments)",
+    "DESC_STYLE": "Cosmetic formatting only",
+    "DESC_BUILD": "Build-system adjustment",
+    "DESC_REFACTOR": "Internal refactor; public API signature and behavior unchanged",
+    "DESC_DEPRECATE": "Marks deprecation but stays usable (SemVer §7 requires minor)",
+    "DESC_REVERTBREAK": "Reverts a breaking change; compatibility is broken a second time",
+    "DESC_BREAKING": "Breaking change",
+    # S2 精准纠错子原因键（新增）
+    "ERR_FIX_EMPTY": "input is empty; a version must look like 1.2.3",
+    "ERR_FIX_LEADING_ZERO": "numeric segment {0} has a leading zero; write it without the zero (e.g. {0} -> {1})",
+    "ERR_FIX_SEGMENT_COUNT": "expected 3 numeric segments MAJOR.MINOR.PATCH; got {0}",
+    "ERR_FIX_BAD_PRE": "pre-release part {0} is malformed (use ASCII alphanumerics/hyphens, no leading zeros)",
+    "ERR_FIX_BAD_BUILD": "build part {0} is malformed (use ASCII alphanumerics/hyphens)",
+    "ERR_FIX_TRAILING": "unexpected character near {0}; check for trailing '-' or '+'",
+}
+
+
+def _warn(msg: str) -> None:
+    """诊断信息一律写 stderr，保持 stdout 为纯 JSON（机器可读约定）。"""
+    try:
+        sys.stderr.write(msg + "\n")
+    except Exception:
+        pass
 
 
 def load_locale(lang: str) -> dict:
-    """读取 locales/<lang>.json。文件缺失时回退 en。"""
-    path = os.path.join(_LOCALE_DIR, lang + ".json")
-    try:
-        with io.open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        with io.open(os.path.join(_LOCALE_DIR, "en.json"), encoding="utf-8") as f:
-            return json.load(f)
+    """读取 locales/<lang>.json。
+
+    健壮化（S1）：仅白名单语言（en/zh）进入路径拼接，杜绝路径穿越；
+    文件缺失或 JSON 损坏（JSONDecodeError/ValueError）时，先尝试回退 en.json，
+    连 en.json 都不可用时回退到内嵌 _EN_FALLBACK 英文默认串表，保证决策主流程
+    绝不因 locale 数据损坏而崩溃。
+    """
+    safe = lang if lang in ("en", "zh") else "en"
+    order = [safe, "en"] if safe != "en" else ["en"]
+    for candidate in order:
+        path = os.path.join(_LOCALE_DIR, candidate + ".json")
+        try:
+            with io.open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or not data:
+                raise ValueError("locale file is empty or not a JSON object")
+            if candidate != safe:
+                _warn("note: locale %r unavailable/corrupt, fell back to %s" % (safe, candidate))
+            return data
+        except FileNotFoundError:
+            continue
+        except (json.JSONDecodeError, ValueError, OSError) as exc:
+            _warn("note: locale file %s unreadable (%s); falling back" % (path, type(exc).__name__))
+            continue
+    _warn("note: no locale file loadable; using built-in English defaults")
+    return dict(_EN_FALLBACK)
 
 
 def set_lang(lang: str) -> None:
-    global _STR
+    global _STR, _ACTIVE_LANG
     _STR = load_locale(lang)
+    _ACTIVE_LANG = lang
 
 
 def _(key: str, *args, **kwargs) -> str:
-    """按当前语言取文案；key 缺失时原样返回 key，便于排查。"""
-    s = _STR.get(key, key)
+    """按当前语言取文案；key 缺失时原样返回 key，并向 stderr 写一次 WARN（S1）。"""
+    s = _STR.get(key)
+    if s is None:
+        if key not in _WARNED_KEYS:
+            _WARNED_KEYS.add(key)
+            _warn("warn: missing locale key %r; showing raw key" % key)
+        s = key
     if args or kwargs:
         try:
             return s.format(*args, **kwargs)
-        except (IndexError, KeyError, ValueError):
+        except (IndexError, KeyError, ValueError) as exc:
+            _warn("warn: locale format failed for key %r (%s); returning raw string" % (key, type(exc).__name__))
             return s
     return s
 
@@ -113,8 +220,55 @@ _PEP440_HINTS = (
 )
 
 
+def classify_version_error(text: str) -> "Tuple[str, str]":
+    """对一个无法解析的版本串，返回 (reason_code, detail)（S2）。
+
+    顺序判定：空 → 段数 → 前导零 → 尾部杂字符 → 预发布/构建段格式。
+    detail 是可供展示的具体片段（如带前导零的段）。
+    """
+    s = text.strip()
+    if s == "":
+        return ("empty", s)
+    # 先剥掉可选的 v 前缀与 pre/build 段，只看三段核心
+    core = s
+    if core.startswith("v"):
+        core = core[1:]
+    pre_part = build_part = ""
+    if "+" in core:
+        core, build_part = core.split("+", 1)
+    if "-" in core:
+        core, pre_part = core.split("-", 1)
+    segs = core.split(".")
+    if len(segs) != 3:
+        return ("wrong_segment_count", str(len(segs)))
+    for seg in segs:
+        if seg == "":
+            return ("trailing", text)
+        if not seg.isdigit():
+            return ("bad_core", seg)
+        if len(seg) > 1 and seg[0] == "0":
+            return ("leading_zero", seg)
+    # 核心三段合法，问题在 pre/build
+    if pre_part and not re.fullmatch(r"[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*", pre_part):
+        return ("bad_pre", pre_part)
+    if build_part and not re.fullmatch(r"[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*", build_part):
+        return ("bad_build", build_part)
+    return ("other", s)
+
+
 class BadVersion(ValueError):
-    """版本号不符合 SemVer 2.0.0 语法。"""
+    """版本号不符合 SemVer 2.0.0 语法。
+
+    S2: 附带 reason_code 子原因标签（empty/leading_zero/wrong_segment_count/
+    bad_pre/bad_build/trailing/other），供 CLI 层选择针对性纠错提示，
+    而不是对所有非法输入回同一句规范条文。
+    """
+
+    def __init__(self, text: str, reason_code: str = "other", detail: str = "") -> None:
+        self.input = text
+        self.reason_code = reason_code
+        self.detail = detail
+        super().__init__(text)
 
 
 class Version:
@@ -135,7 +289,14 @@ class Version:
     def parse(cls, text: str) -> "Version":
         m = _PRE_RE.match(text.strip())
         if not m:
-            raise BadVersion(text)
+            code, detail = classify_version_error(text)
+            # 前导零：把 "01" -> "1" 作为纠正建议给出
+            if code == "leading_zero":
+                fixed = detail.lstrip("0") or "0"
+            else:
+                fixed = ""
+            raise BadVersion(text, reason_code=code,
+                            detail=detail + ((" -> " + fixed) if fixed else ""))
         pre_raw = m.group("pre")
         pre: Tuple[object, ...] = ()
         if pre_raw is not None:
@@ -453,6 +614,31 @@ def _print(obj: dict) -> None:
     print(json.dumps(obj, ensure_ascii=False, indent=2))
 
 
+# S2: reason_code → 针对性纠错 locale 键。detail 形如 "01" 或 "01 -> 1"。
+_VERSION_FIX_HINTS = {
+    "empty": "ERR_FIX_EMPTY",
+    "leading_zero": "ERR_FIX_LEADING_ZERO",
+    "wrong_segment_count": "ERR_FIX_SEGMENT_COUNT",
+    "bad_pre": "ERR_FIX_BAD_PRE",
+    "bad_build": "ERR_FIX_BAD_BUILD",
+    "trailing": "ERR_FIX_TRAILING",
+    "bad_core": "ERR_FIX_TRAILING",
+    "other": "ERR_FIX_TRAILING",
+}
+
+
+def _version_fix_hint(exc: "BadVersion", hint_key: Optional[str]) -> str:
+    """把子原因标签 + detail 渲染成一句针对性纠错提示。"""
+    if not hint_key:
+        return ""
+    detail = exc.detail or exc.input
+    # 前导零：detail 已含 "01 -> 1"，拆成 (段, 纠正) 两个格式化参数
+    if hint_key == "ERR_FIX_LEADING_ZERO" and " -> " in detail:
+        seg, fixed = detail.split(" -> ", 1)
+        return _(hint_key, seg, fixed)
+    return _(hint_key, detail)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="semver_check",
@@ -494,7 +680,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     args = ap.parse_args(argv)
     # 语言解析（在真正产出任何文案前完成）
-    set_lang(detect_lang() if args.lang == "auto" else args.lang)
+    resolved = detect_lang() if args.lang == "auto" else args.lang
+    set_lang(resolved)
+    # Q2：auto 命中回退（未检出 zh）时，向 stderr 显式告知实际语言，不污染 stdout JSON
+    if args.lang == "auto" and resolved == "en":
+        _warn("note: lang=auto -> en (no zh* locale detected; override with --lang zh)")
     try:
         if args.cmd == "compare":
             a, b = Version.parse(args.a), Version.parse(args.b)
@@ -528,8 +718,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         _print(report)
         return 0
     except BadVersion as exc:
+        # S2：按子原因标签选针对性纠错提示（而非一句通用规范条文）
+        hint_key = _VERSION_FIX_HINTS.get(exc.reason_code)
+        hint = _version_fix_hint(exc, hint_key)
         _print({"valid": False, "input": str(exc),
                 "error": _("ERR_BAD_VERSION_SYNTAX"),
+                "fix_hint": hint,
+                "reason_code": exc.reason_code,
                 "ecosystem_notes": ecosystem_notes(str(exc))})
         return 2
     except ValueError as exc:

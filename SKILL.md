@@ -1,7 +1,7 @@
 ---
 name: version-decide
 slug: version-decide
-version: 1.0.0
+version: 1.1.0
 displayName: Version Decider
 summary: Decides the next SemVer version number from code changes, for beginner developers. Outputs a single, unambiguous version recommendation.
 tags: [versioning, semver, semantic-versioning, release-decision, version-management, 版本号, 语义化版本]
@@ -16,6 +16,10 @@ when_to_use: |
   - Asking the install command "how do I install v2" — that is package management, not version decision
   - Asking what the current version of some project is — just read it, this skill is not needed
   - Generic "should I release now" / project-management or roadmap questions — that is release planning, not version numbering
+# Read/Grep/Glob: read-only version-file discovery. AskUserQuestion: confirm breaking-change
+# ambiguity. Bash(python*) is scoped to running THIS skill's own scripts (semver_check.py) and
+# read-only discovery commands (cat/grep/git tag); it is NOT granted for writes, network, or
+# package management.
 allowed-tools: Read, Grep, Glob, Bash(python*), AskUserQuestion
 disable-model-invocation: false
 user-invocable: true
@@ -58,9 +62,10 @@ Give developers (especially beginners) a **single, unambiguous** version-number 
 ## Capabilities & safety boundaries
 
 - **Decision engine:** `scripts/semver_check.py` (zero-dependency Python) computes every version via deterministic arithmetic. The model must never compute a version by hand; if the script errors, show the raw error and ask, do not fabricate a number.
-- **Dev-only helpers:** `scripts/measure_skill.py` (SKILL.md compliance metrics) and `scripts/test_semver_check.py` (37 regression tests) are **maintenance tools**, not part of the runtime decision flow. They are never invoked to answer a release-decision question.
+- **Dev-only helpers:** `scripts/measure_skill.py` (SKILL.md compliance metrics) and `scripts/test_semver_check.py` (regression tests) are **maintenance tools**, not part of the runtime decision flow. They are never invoked to answer a release-decision question.
 - **Locale only:** the engine reads **only** the `LC_ALL` / `LC_MESSAGES` / `LANG` environment variables, and only to choose output language. It does **not** read secrets, network configuration, or any other environment data.
-- **No side effects:** read-only inspection of local version files. No package installation, no repository mutation, no file deletion, no network calls.
+- **No side effects / no privileges granted:** read-only inspection of local version files (e.g. `package.json`, `pyproject.toml`, `git tag`). No package installation, no repository mutation, no file deletion, no network calls. The declared tools are used **solely** for version discovery and running this skill's own scripts; this skill does not grant — and you should not grant — write, network, or package-management permissions on its behalf.
+
 
 ---
 

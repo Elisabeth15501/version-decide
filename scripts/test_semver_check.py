@@ -13,11 +13,13 @@ language). The runtime skill is English-default; the zh copy is an optional loca
 
 import os
 import sys
+import json
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from semver_check import (Version, BadVersion, analyze, next_version, normalize_level,
-                     level_for_change, set_lang, LEVEL_ORDER)
+                     level_for_change, set_lang, LEVEL_ORDER,
+                     classify_version_error, load_locale, _EN_FALLBACK, detect_lang)
 
 
 class TestParse(unittest.TestCase):
@@ -258,6 +260,95 @@ class TestI18n(unittest.TestCase):
         blob = " ".join(r["reasons"]).lower() + " " + " ".join(
             c["why"] for c in r["changes"]).lower()
         self.assertIn("backward-compatible", blob)
+
+
+class TestRobustness(unittest.TestCase):
+    """S1/S2/Q2 hardening: locale 损坏/未知语言回退 + BadVersion 子原因标签。"""
+
+    # --- S2: BadVersion reason_code 分类 ---------------------------------
+    def test_leading_zero_code(self):
+        set_lang("en")
+        with self.assertRaises(BadVersion) as cm:
+            Version.parse("01.2.3")
+        self.assertEqual(cm.exception.reason_code, "leading_zero")
+        self.assertIn(" -> ", cm.exception.detail)  # 自带纠正建议 01 -> 1
+
+    def test_wrong_segment_count_code(self):
+        set_lang("en")
+        with self.assertRaises(BadVersion) as cm:
+            Version.parse("1.2")
+        self.assertEqual(cm.exception.reason_code, "wrong_segment_count")
+
+    def test_empty_code(self):
+        set_lang("en")
+        with self.assertRaises(BadVersion) as cm:
+            Version.parse("")
+        self.assertEqual(cm.exception.reason_code, "empty")
+
+    def test_bad_pre_code(self):
+        set_lang("en")
+        with self.assertRaises(BadVersion) as cm:
+            Version.parse("1.2.3-.")
+        self.assertEqual(cm.exception.reason_code, "bad_pre")
+
+    def test_classify_helper_matrix(self):
+        self.assertEqual(classify_version_error("01.2.3")[0], "leading_zero")
+        self.assertEqual(classify_version_error("1.2")[0], "wrong_segment_count")
+        self.assertEqual(classify_version_error("")[0], "empty")
+        self.assertEqual(classify_version_error("1.2.3")[0], "other")  # 合法 → other
+
+    # --- S1: locale 健壮性 ------------------------------------------------
+    def test_en_fallback_table_matches_enjson_keys(self):
+        """内嵌兜底串表键集合必须覆盖 en.json 当前键（新增键不落到兜底就崩）。"""
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "locales")
+        with open(os.path.join(base, "en.json"), encoding="utf-8") as f:
+            en_keys = set(json.load(f))
+        missing = en_keys - set(_EN_FALLBACK)
+        self.assertFalse(missing, "en.json 键缺失于 _EN_FALLBACK: %s" % sorted(missing))
+
+    def test_load_locale_unknown_lang_falls_back_to_en(self):
+        """未知语言 xx 走 load_locale 时回退 en.json，不抛异常（S1）。"""
+        data = load_locale("xx")
+        self.assertIn("MSG_CLI_DESC", data)
+        self.assertIsInstance(data, dict)
+
+    def test_load_locale_corrupt_falls_back_to_builtin(self):
+        """locale 目录全损坏时回退内嵌英文默认表，绝不崩溃（S1 核心保证）。"""
+        import importlib, tempfile, shutil
+        tmp = tempfile.mkdtemp()
+        try:
+            shutil.copytree(os.path.dirname(os.path.abspath(__file__)),
+                            os.path.join(tmp, "scripts"), dirs_exist_ok=True)
+            loc = os.path.join(tmp, "locales")
+            os.makedirs(loc, exist_ok=True)
+            with open(os.path.join(loc, "en.json"), "w") as f:
+                f.write("{corrupt")
+            with open(os.path.join(loc, "zh.json"), "w") as f:
+                f.write("{corrupt")
+            # 指向临时 locales
+            import semver_check as sc
+            orig_dir, orig_str = sc._LOCALE_DIR, dict(sc._STR)
+            sc._LOCALE_DIR = os.path.join(tmp, "scripts", "..", "locales")
+            try:
+                data = sc.load_locale("zh")
+                self.assertIsInstance(data, dict)
+                self.assertTrue(data)  # 兜底表非空
+            finally:
+                sc._LOCALE_DIR, sc._STR = orig_dir, orig_str
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- Q2: auto 回退不改变计算结果 -------------------------------------
+    def test_detect_lang_defaults_en_without_zh_env(self):
+        saved = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
+        for k in saved:
+            os.environ.pop(k, None)
+        try:
+            self.assertEqual(detect_lang(), "en")
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
 
 if __name__ == "__main__":
